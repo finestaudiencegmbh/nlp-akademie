@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_SHEET_CONFIG } from './parser.js';
+import { DEFAULT_UTM_ROLES } from './build.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.join(__dirname, '..', 'config', 'project.config.json');
@@ -20,7 +21,7 @@ export const DEFAULT_PROJECT = {
   branding: { accent: '#d0bb5a', logo: '/logo.svg' },
   features: { hasTickets: true, hasQuality: true },
   labels: { ticket: { one: 'Ticket', many: 'Tickets', short: 'Ticket' } },
-  sheet: DEFAULT_SHEET_CONFIG,
+  sheet: { ...DEFAULT_SHEET_CONFIG, utmRoles: DEFAULT_UTM_ROLES },
 };
 
 let cached = null;
@@ -49,6 +50,7 @@ function normalize(raw) {
       ticket: { ...DEFAULT_PROJECT.labels.ticket, ...((raw.labels || {}).ticket || {}) },
     },
     sheet: {
+      utmRoles: { ...DEFAULT_UTM_ROLES, ...(sheet.utmRoles || {}) },
       detect: sheet.detect || DEFAULT_SHEET_CONFIG.detect,
       columns: {
         leads: { ...DEFAULT_SHEET_CONFIG.columns.leads, ...((sheet.columns || {}).leads || {}) },

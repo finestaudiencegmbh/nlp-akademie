@@ -1,68 +1,70 @@
 {
-  "_comment": "Bewertungsmodell für die Lead-Qualität. Alle Werte sind bewusst einfach gehalten und können angepasst werden. Geändert wird hier – nicht im Code. Nach dem Speichern im Dashboard auf 'Aktualisieren' klicken.",
+  "_comment": "Bewertungsmodell für die Lead-Qualität des Result-Maker-Workshops. Bewertet werden die Antworten aus dem Umfrage-Tab. Nur Dimensionen, die unter 'weights' stehen, fließen in den Score ein – alle anderen Antworten werden nur angezeigt und exportiert. Fehlt eine Antwort, wird der Score auf die vorhandenen Gewichte renormiert (fehlende Angaben ziehen also nicht nach unten). Geändert wird hier – nicht im Code. Nach dem Speichern im Dashboard auf 'Aktualisieren' klicken.",
+
+  "_comment_annahme": "ACHTUNG – die Regeln für 'urgency' und die Einkommensstufen sind anhand der bisher einzigen Testzeile im Sheet ('In den nächsten Wochen', '2.000 - 2.999 €') gesetzt. Sobald die echten Antwortoptionen der Umfrage feststehen, hier gegenprüfen: nicht getroffene Antworten fallen still aus der Bewertung (bzw. auf 'default').",
 
   "weights": {
-    "income": 0.8,
-    "invested": 0.08,
-    "realEstate": 0.07,
-    "employment": 0.05
+    "income": 0.45,
+    "urgency": 0.35,
+    "employment": 0.2
   },
 
   "householdRule": {
-    "_comment": "Harte Regel: niedriges Haushaltseinkommen. Wer unter 'incomeBelow' €/Monat verdient UND einen der 'relationships'-Werte angibt (Partner-Haushalt), wird automatisch als schlechte Qualität (Tier D) gewertet – unabhängig vom rechnerischen Score. cappedScore = angezeigter Score in diesem Fall.",
-    "enabled": true,
+    "_comment": "Aus – die Umfrage fragt keinen Beziehungsstand/Haushalt ab. Zum Reaktivieren: enabled true und 'relationship' als Antwort-Schlüssel in project.config.json anlegen.",
+    "enabled": false,
     "incomeBelow": 3500,
-    "relationships": ["verheiratet", "in einer beziehung", "beziehung", "partnerschaft", "liiert"],
+    "relationships": [],
     "cappedScore": 20
   },
 
   "income": {
-    "_comment": "Monatliches Einkommen als Stufen (0..1), passend zur Ampel im Sheet. Es wird der Mittelwert der erkannten Spanne gebildet und der ersten passenden Stufe (atLeast = untere Grenze) zugeordnet.",
+    "_comment": "Monatliches Einkommen als Stufen (0..1). Aus der Antwort wird der Mittelwert der erkannten Spanne gebildet ('2.000 - 2.999 €' -> 2.500) und der ersten passenden Stufe (atLeast = untere Grenze) zugeordnet. 'unter X' und 'ab X' werden ebenfalls erkannt.",
     "tiers": [
-      { "atLeast": 5000, "score": 1.0 },
-      { "atLeast": 3500, "score": 0.8 },
-      { "atLeast": 2500, "score": 0.5 },
+      { "atLeast": 6000, "score": 1.0 },
+      { "atLeast": 4500, "score": 0.85 },
+      { "atLeast": 3500, "score": 0.65 },
+      { "atLeast": 2500, "score": 0.45 },
       { "atLeast": 1500, "score": 0.25 },
-      { "atLeast": 1000, "score": 0.12 },
-      { "atLeast": 0, "score": 0.05 }
+      { "atLeast": 0, "score": 0.1 }
     ]
   },
 
-  "invested": {
-    "_comment": "Bereits in den Vermögensaufbau investiertes Kapital. Freitext wird nach Stichworten/Beträgen bewertet (0..1).",
-    "none": 0.05,
-    "monthly": 0.6,
-    "yesGeneric": 0.5,
-    "fullScoreAt": 10000
-  },
-
-  "realEstate": {
-    "_comment": "Immobilienbesitz. Schlüssel werden case-insensitiv als Teilstring geprüft (von oben nach unten).",
+  "urgency": {
+    "_comment": "Dringlichkeit der Lösung – der stärkste Kaufindikator für einen Workshop. Regeln werden von oben nach unten als Teilstring geprüft (case-insensitiv), die erste passende gewinnt. 'default' greift, wenn keine Regel passt.",
     "rules": [
-      { "match": "mehrere", "score": 1.0 },
-      { "match": "zwei", "score": 1.0 },
-      { "match": "ja", "score": 0.7 },
-      { "match": "noch nicht", "score": 0.3 },
-      { "match": "nein", "score": 0.0 }
-    ]
+      { "match": "sofort", "score": 1.0 },
+      { "match": "so schnell wie möglich", "score": 1.0 },
+      { "match": "nächsten wochen", "score": 0.9 },
+      { "match": "woche", "score": 0.85 },
+      { "match": "nächsten monaten", "score": 0.55 },
+      { "match": "monat", "score": 0.5 },
+      { "match": "jahr", "score": 0.25 },
+      { "match": "irgendwann", "score": 0.1 },
+      { "match": "keine", "score": 0.1 },
+      { "match": "nur informieren", "score": 0.1 }
+    ],
+    "default": 0.4
   },
 
   "employment": {
-    "_comment": "Beschäftigungsstatus. Für ein Vermögensaufbau-Angebot zählt verfügbares/planbares Einkommen.",
+    "_comment": "Berufsbezeichnung. Schlüssel werden case-insensitiv als Teilstring geprüft. 'default' greift bei unbekannten Freitext-Angaben.",
     "scores": {
       "unternehmer": 1.0,
+      "geschäftsführer": 1.0,
       "selbststaendig": 0.9,
       "selbstständig": 0.9,
       "selbständig": 0.9,
-      "angestellt": 0.75,
-      "beamtin": 0.75,
-      "beamter": 0.75,
-      "in elternzeit": 0.5,
-      "elternzeit": 0.5,
-      "student": 0.4,
-      "studentin": 0.4,
-      "rentner": 0.4,
-      "rentnerin": 0.4,
+      "freiberuf": 0.85,
+      "führungskraft": 0.85,
+      "angestellt": 0.7,
+      "beamtin": 0.65,
+      "beamter": 0.65,
+      "in elternzeit": 0.45,
+      "elternzeit": 0.45,
+      "student": 0.35,
+      "studentin": 0.35,
+      "rentner": 0.35,
+      "rentnerin": 0.35,
       "arbeitssuchend": 0.2,
       "arbeitslos": 0.2
     },

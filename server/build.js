@@ -3,6 +3,20 @@ import { loadCampaignConfig } from './campaigns.js';
 
 const collapse = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
 
+/**
+ * Welcher UTM-Parameter trägt welche Dimension? Hängt am URL-Schema des
+ * Werbekontos und steht daher in project.config.json (sheet.utmRoles).
+ * Default = bisheriges Schema (source = Anzeigengruppe, medium = Creative).
+ * null bedeutet: diese Dimension wird nicht getrackt.
+ */
+export const DEFAULT_UTM_ROLES = { campaign: 'campaign', adset: 'source', creative: 'medium', placement: 'term' };
+
+/** Wert einer Dimension aus der UTM-Kombination (gemäß Rollen-Mapping). */
+const roleOf = (utm, roles, role) => {
+  const param = roles[role];
+  return param ? collapse(utm[param]) : '';
+};
+
 /** Rein numerischer Wert (z. B. Meta-IDs wie 52540202640549) -> nicht zuordenbar. */
 const isNumericId = (s) => /^\d{6,}$/.test(collapse(s));
 
@@ -52,20 +66,24 @@ function isOrganicSource(utm, patterns) {
 
 /**
  * Entscheidet, ob ein Datensatz aus bezahlter Werbung stammt.
- * Bezahlte Anzeigengruppen folgen dem Schema "X | Y | Z | ..." und/oder
- * tauchen in der Adspend-Übersicht auf. Alles andere gilt als organisch.
+ * Reihenfolge: organische Muster > utm_medium (paid/cpc/…) > Adspend-Übersicht
+ * > Namensschema "X | Y | Z | …". Alles andere gilt als organisch.
  */
-function isPaid(utm, paidAdsets, patterns) {
+function isPaid(utm, paidAdsets, patterns, roles, paidMediums = []) {
   // Harte Regel: was in config/campaigns.json unter organicPatterns steht
   // (z. B. ManyChat, Bio, der Kampagnen-Slug), gilt immer als organisch.
   if (isOrganicSource(utm, patterns)) return false;
-  const src = collapse(utm.source);
+  // utm_medium=paid / cpc / paid_social … – das eindeutigste Signal, sofern das
+  // URL-Schema des Werbekontos es setzt (config/campaigns.json: paidMediums).
+  const med = collapse(utm.medium).toLowerCase();
+  if (med && paidMediums.some((m) => med === String(m).toLowerCase())) return true;
+  const src = roleOf(utm, roles, 'adset') || collapse(utm.source);
   if (!src) return false;
   if (paidAdsets.has(src.toLowerCase())) return true;
   // Bezahlte Anzeigen folgen dem Schema "X | Y | Z | ..." – das kann in der
   // Anzeigengruppe (utm_source), der Kampagne (utm_campaign) ODER dem Creative
   // (utm_medium) stehen. Manche Konten nutzen Pipes nur im Kampagnennamen.
-  if (`${src} ${collapse(utm.campaign)} ${collapse(utm.medium)}`.includes('|')) return true;
+  if (`${src} ${roleOf(utm, roles, 'campaign')} ${collapse(utm.medium)}`.includes('|')) return true;
   // Rein numerische Source = Meta-ID -> bezahlt (aber nicht eindeutig zuordenbar).
   if (isNumericId(src)) return true;
   return false;
@@ -75,22 +93,24 @@ function isPaid(utm, paidAdsets, patterns) {
  * Führt Leads, VIP-Tickets und Adspend-Übersicht zu einem einheitlichen
  * Datensatz zusammen. Join über die E-Mail-Adresse.
  */
-export function buildDataset({ leads, tickets, overview }, cfg, features = {}) {
+export function buildDataset({ leads, tickets, overview }, cfg, features = {}, utmRoles = DEFAULT_UTM_ROLES) {
   const { hasTickets = true, hasQuality = true } = features;
+  const roles = { ...DEFAULT_UTM_ROLES, ...(utmRoles || {}) };
   const warnings = [];
   const paidAdsets = new Set(overview.map((o) => o.adset.toLowerCase()));
   const campCfg = loadCampaignConfig();
   const organicPatterns = campCfg.organicPatterns || ['manychat', 'bio'];
+  const paidMediums = campCfg.paidMediums || [];
   const organicLabel = campCfg.organicLabel || '(organisch)';
   const unattribLabel = campCfg.unattributablePaidLabel || '(Paid · nicht zuordenbar)';
 
   // Leitet die Dimensions-Labels (Kampagne/Anzeigengruppe/Creative) aus einer
   // UTM-Kombination ab – einheitlich für Lead-UTM UND Ticket-UTM verwendbar.
   const dimsFor = (utm) => {
-    const paid = isPaid(utm, paidAdsets, organicPatterns);
-    const rawCampaign = collapse(utm.campaign);
-    const rawAdset = collapse(utm.source);
-    const rawCreative = collapse(utm.medium);
+    const paid = isPaid(utm, paidAdsets, organicPatterns, roles, paidMediums);
+    const rawCampaign = roleOf(utm, roles, 'campaign');
+    const rawAdset = roleOf(utm, roles, 'adset');
+    const rawCreative = roleOf(utm, roles, 'creative');
     if (!paid) return { paid: false, campaign: organicLabel, adset: organicLabel, creative: rawCreative || organicLabel };
     if (isNumericId(rawCampaign) || isNumericId(rawAdset) || !rawCampaign || !rawAdset) {
       return { paid: true, campaign: unattribLabel, adset: unattribLabel, creative: rawCreative || unattribLabel };
@@ -210,8 +230,8 @@ export function buildDataset({ leads, tickets, overview }, cfg, features = {}) {
       campaign,
       adset,
       creative,
-      placement: placementLabel(r.utm.term),
-      placementRaw: collapse(r.utm.term),
+      placement: placementLabel(roleOf(r.utm, roles, 'placement')),
+      placementRaw: roleOf(r.utm, roles, 'placement'),
       // Rohe UTM-Werte für den Quellen-Tab (Donut/Top-Listen)
       sourceRaw: collapse(r.utm.source),
       campaignRaw: collapse(r.utm.campaign),

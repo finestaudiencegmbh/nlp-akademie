@@ -18,9 +18,9 @@ services:
         value: "20"
       - key: NPM_CONFIG_PRODUCTION
         value: "false"
-      # --- Google Sheet (ID aus der Sheet-URL) – beim Deploy ausfüllen ---
+      # --- Google Sheet (ID aus der Sheet-URL) ---
       - key: SPREADSHEET_ID
-        sync: false
+        value: 1a0L9E798ChgwWh7X0xZFoRnHi53RAIeqkno3-_Z25M0
       - key: CACHE_TTL_SECONDS
         value: "900"
       # --- KI-Chatbot (optional) – Anthropic-API-Key ---
@@ -40,7 +40,7 @@ services:
       - key: META_ACCESS_TOKEN
         sync: false
       - key: META_AD_ACCOUNT_ID
-        sync: false
+        value: act_305949210219349
       # --- Facebook-Ads via Supermetrics – optional, leer = aus ---
       - key: SUPERMETRICS_API_KEY
         sync: false

@@ -1,10 +1,10 @@
 {
   "_comment": "Zentrale Projekt-Konfiguration. Alles, was sich von Workshop zu Workshop ändert, steht HIER – nicht im Code. Siehe TEMPLATE.md für die Onboarding-Anleitung. Ergänzend: scoring.json (Bewertungsmodell) und campaigns.json (Lead-Kampagnen-Erkennung).",
 
-  "name": "Workshop Dashboard",
-  "shortName": "Workshop",
-  "subtitle": "Lead-Dashboard",
-  "slug": "workshop",
+  "name": "Result Maker Online-Workshop",
+  "shortName": "Result Maker",
+  "subtitle": "Online-Workshop · 14. & 15.10.",
+  "slug": "result-maker",
 
   "_comment_branding": "accent = Akzentfarbe (Hex). Hover-/Glow-/Linien-Töne werden daraus automatisch abgeleitet. logo = Pfad im Ordner web/public.",
   "branding": {
@@ -12,7 +12,7 @@
     "logo": "/logo.svg"
   },
 
-  "_comment_features": "hasTickets: zweite Conversion-Stufe (Ticket/Upgrade) vorhanden? false = alle Ticket-KPIs (Tickets, €/Ticket, CVR Ticket, Kosten/Ticket) verschwinden. hasQuality: Fragebogen + Lead-Scoring vorhanden? false = Quali-Rate, Ø Quali, Tiers, Antworten-Details und Quali-Filter verschwinden. hasQuality setzt hasTickets voraus – die Fragebogen-Antworten stecken im Ticket-/Antworten-Tab des Sheets.",
+  "_comment_features": "hasTickets: zweite Conversion-Stufe (hier: die ausgefüllte Umfrage = Gold-Ticket) vorhanden? false = alle Ticket-KPIs verschwinden. hasQuality: Fragebogen + Lead-Scoring vorhanden? false = Quali-Rate, Ø Quali, Tiers, Antworten-Details und Quali-Filter verschwinden. hasQuality setzt hasTickets voraus – die Fragebogen-Antworten stecken im Umfrage-Tab des Sheets.",
   "features": {
     "hasTickets": true,
     "hasQuality": true
@@ -20,44 +20,53 @@
 
   "_comment_labels": "Wie die zweite Stufe im Dashboard heißt. one = Einzahl, many = Mehrzahl, short = Kürzel für Badges/Tabellenspalten.",
   "labels": {
-    "ticket": { "one": "VIP-Ticket", "many": "VIP-Tickets", "short": "VIP" }
+    "ticket": { "one": "Gold-Ticket", "many": "Gold-Tickets", "short": "Gold" }
   },
 
-  "_comment_sheet": "Spalten-Mapping des Google Sheets. Alle Werte werden normalisiert verglichen (klein, ohne ? : . und ohne Mehrfach-Leerzeichen) – '€ Adspend?' trifft also 'adspend' NICHT, 'Adspend' schon. Mehrere Einträge je Feld = Fallback-Reihenfolge.",
+  "_comment_sheet": "Spalten-Mapping des Google Sheets. Alle Werte werden normalisiert verglichen (klein, ohne ? : . und ohne Mehrfach-Leerzeichen) – 'Monatliches Einkommen?' trifft also 'monatliches einkommen'. Mehrere Einträge je Feld = Fallback-Reihenfolge.",
   "sheet": {
-    "_comment_detect": "Tabellen-Erkennung an der Kopfzeile (Tab-Namen sind egal). Je Typ eine Liste von Regeln; eine Regel trifft, wenn ALLE 'all'-Spalten vorhanden sind UND (ohne 'some') oder mindestens eine 'some'-Spalte vorhanden ist. Reihenfolge: overview, tickets, leads.",
+    "_comment_utmRoles": "Welcher UTM-Parameter trägt welche Dimension? Hängt am URL-Schema des Werbekontos. Erlaubte Werte: source, medium, campaign, term, content – oder null, wenn die Dimension nicht getrackt wird. AKTUELLES SCHEMA dieses Kontos: utm_source=meta, utm_medium=paid, utm_campaign=Kampagne, utm_term=Anzeigengruppe, utm_content=Creative (noch leer – Meta-URL-Parameter um {{ad.name}} ergänzen, sonst bleibt die Creative-Ebene leer). Placement wird derzeit nicht übergeben.",
+    "utmRoles": {
+      "campaign": "campaign",
+      "adset": "term",
+      "creative": "content",
+      "placement": null
+    },
+
+    "_comment_detect": "Tabellen-Erkennung an der Kopfzeile (Tab-Namen sind egal). Je Typ eine Liste von Regeln; eine Regel trifft, wenn ALLE 'all'-Spalten vorhanden sind UND (ohne 'some') oder mindestens eine 'some'-Spalte vorhanden ist. Reihenfolge: overview, tickets, leads – der Umfrage-Tab muss VOR dem Lead-Tab greifen, weil beide 'Datum Eintragung' + UTM-Spalten haben.",
     "detect": {
       "overview": [{ "all": ["anzeigengruppe", "adspend"] }],
       "tickets": [
-        { "some": ["monatliches einkommen", "immobilien im besitz"] },
-        { "all": ["teilgenommen am", "vorname"] }
+        { "some": ["dringlichkeit lösung", "berufsbezeichnung", "erwartung an workshop"] }
       ],
-      "leads": [{ "all": ["gewonnen am"], "some": ["utm_source", "e-mail"] }]
+      "leads": [{ "all": ["datum eintragung"], "some": ["utm_source", "e-mail"] }]
     },
 
     "columns": {
       "leads": {
-        "date": ["gewonnen am"],
+        "date": ["datum eintragung", "gewonnen am"],
         "firstName": ["vorname"],
         "lastName": ["nachname"],
         "email": ["e-mail"],
-        "ticketDate": ["vip-ticket geholt am"],
+        "ticketDate": [],
         "utmSource": ["utm_source"],
         "utmMedium": ["utm_medium"],
         "utmCampaign": ["utm_campaign"],
-        "utmTerm": ["utm_term"]
+        "utmTerm": ["utm_term"],
+        "utmContent": ["utm_content"]
       },
       "tickets": {
-        "date": ["teilgenommen am"],
+        "date": ["datum eintragung"],
         "firstName": ["vorname"],
         "lastName": ["nachname"],
-        "email": ["e-mail (funnelcockpit)", "e-mail (typeform)", "e-mail"],
-        "emailAlt": ["e-mail (typeform)"],
+        "email": ["e-mail"],
+        "emailAlt": [],
         "phone": ["handynummer"],
         "utmSource": ["utm_source"],
         "utmMedium": ["utm_medium"],
         "utmCampaign": ["utm_campaign"],
-        "utmTerm": ["utm_term"]
+        "utmTerm": ["utm_term"],
+        "utmContent": ["utm_content"]
       },
       "overview": {
         "status": ["status"],
@@ -66,48 +75,45 @@
         "clicks": ["ausg klicks", "klicks"],
         "cpc": ["cpc"],
         "cvrOptin": ["cvr optin"],
-        "cvrTicket": ["cvr ticket"],
+        "cvrTicket": ["cvr umfrage", "cvr ticket"],
         "cpl": ["cpl"],
         "leads": ["leads"],
-        "tickets": ["vip ticket"],
-        "ticketsQualified": ["ticket qualifiziert"],
-        "ticketsUnqualified": ["ticket nicht qualifiziert"]
+        "tickets": ["umfrage", "gold ticket"],
+        "ticketsQualified": ["qualifiziert"],
+        "ticketsUnqualified": ["nicht qualifiziert"]
       }
     },
 
-    "_comment_answers": "Fragebogen-Antworten. Schlüssel = interner Name; income/invested/realEstate/employment werden von scoring.json bewertet, alle anderen nur angezeigt. label = Anzeige im Lead-Detail und CSV. columns = Spaltenüberschriften im Sheet (Fallback-Reihenfolge). filter: true = eigener Dropdown-Filter. wide: true = breite Darstellung im Lead-Detail (Freitext).",
+    "_comment_answers": "Fragebogen-Antworten aus dem Umfrage-Tab. Schlüssel = interner Name; welche davon in die Lead-Qualität einfließen, steuert scoring.json (weights). label = Anzeige im Lead-Detail und CSV. columns = Spaltenüberschriften im Sheet. filter: true = eigener Dropdown-Filter. wide: true = breite Darstellung im Lead-Detail (Freitext).",
     "answers": {
       "employment": {
-        "label": "Beschäftigung",
-        "columns": ["angestellt selbstständig oder unternehmer"],
+        "label": "Berufsbezeichnung",
+        "columns": ["berufsbezeichnung"],
         "filter": true
       },
       "income": {
-        "label": "Monatliches Einkommen",
-        "columns": ["monatliches einkommen"],
+        "label": "Einkommen",
+        "columns": ["einkommen"],
         "filter": true
       },
-      "realEstate": {
-        "label": "Immobilien im Besitz",
-        "columns": ["immobilien im besitz"],
+      "urgency": {
+        "label": "Dringlichkeit Lösung",
+        "columns": ["dringlichkeit lösung"],
         "filter": true
       },
-      "invested": {
-        "label": "Investiertes Kapital",
-        "columns": ["geld investiert in den vermögensaufbau wenn ja wie viel"]
-      },
-      "relationship": {
-        "label": "Beziehungsstand",
-        "columns": ["beziehungsstand"]
+      "age": {
+        "label": "Alter",
+        "columns": ["alter"],
+        "filter": true
       },
       "challenge": {
         "label": "Größte Herausforderung",
-        "columns": ["größte herausforderung im vermögensaufbau"],
+        "columns": ["größte herausforderung"],
         "wide": true
       },
       "expectation": {
-        "label": "Erwartung an den Workshop",
-        "columns": ["was erhoffst du dir von den 4 abenden"],
+        "label": "Erwartung an Workshop",
+        "columns": ["erwartung an workshop"],
         "wide": true
       }
     }

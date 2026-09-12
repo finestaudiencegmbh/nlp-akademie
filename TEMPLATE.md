@@ -32,6 +32,7 @@ Das ist die einzige Datei, die jedes Projekt anfassen muss.
 | `features.hasTickets` | Gibt es eine zweite Conversion-Stufe nach dem Lead (Ticket, Upgrade, Bewerbung)? |
 | `features.hasQuality` | Gibt es einen Fragebogen mit Lead-Scoring? Setzt `hasTickets` voraus – die Antworten stecken im Ticket-Tab. |
 | `labels.ticket` | Wie die zweite Stufe heißt: `one` (Einzahl), `many` (Mehrzahl), `short` (Badge/Spalte). |
+| `sheet.utmRoles` | Welcher UTM-Parameter welche Dimension trägt (siehe unten). |
 | `sheet.detect` | Wie die Tabellen im Sheet erkannt werden (siehe unten). |
 | `sheet.columns` | Spaltenüberschriften je Tabelle. |
 | `sheet.answers` | Die Fragebogen-Spalten inkl. Anzeigename. |
@@ -48,6 +49,47 @@ sauberes Lead-Dashboard mit Spend, CPL, CTR, CPM und Quellen-Aufschlüsselung.
 Quali-Rate, Ø Quali, Tier A–D, Verteilungsbalken, Qualitäts-Verlauf, die
 Fragebogen-Filter, das Antworten-Detail beim Aufklappen eines Leads, die
 Antwort-Spalten im CSV und alle Quali-Felder im Chatbot-Kontext.
+
+### UTM-Rollen — der wichtigste Punkt
+
+Jedes Werbekonto baut seine URL-Parameter anders. Deshalb steht in
+`sheet.utmRoles`, **welcher UTM-Parameter welche Dimension trägt**:
+
+```jsonc
+"utmRoles": {
+  "campaign":  "campaign",   // utm_campaign
+  "adset":     "term",       // utm_term
+  "creative":  "content",    // utm_content
+  "placement": null          // wird nicht getrackt
+}
+```
+
+Erlaubte Werte: `source`, `medium`, `campaign`, `term`, `content` oder `null`.
+Steht eine Dimension auf `null` oder ist der Parameter leer, bleibt die
+entsprechende Ebene im Dashboard leer – dort gibt es dann nichts zu optimieren.
+
+**Empfohlener URL-Parameter-String in Meta** (Werbeanzeigenebene → „URL-Parameter"):
+
+```
+utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_term={{adset.name}}&utm_content={{ad.name}}
+```
+
+Damit greift die Zuordnung Kampagne → Anzeigengruppe → Creative durchgehend.
+Fehlt `utm_content`, gibt es keine Creative-Auswertung – und genau die ist der
+Hauptgrund für dieses Dashboard.
+
+### Bezahlt oder organisch?
+
+`config/campaigns.json` entscheidet in dieser Reihenfolge:
+
+1. `organicPatterns` – kommt einer dieser Begriffe irgendwo in den UTMs vor,
+   ist der Lead organisch. Teilstring-Treffer, also **keine kurzen, generischen
+   Begriffe** eintragen: `"bio"` würde auch in einem Kampagnennamen wie
+   „Biohacking" zuschlagen.
+2. `paidMediums` – exakter Wert von `utm_medium` (`paid`, `cpc`, `paid_social`
+   …). Das zuverlässigste Signal, wenn das URL-Schema es setzt.
+3. Anzeigengruppe steht in der Adspend-Übersicht des Sheets.
+4. Namensschema mit `|` in Kampagne/Anzeigengruppe.
 
 ### Sheet-Mapping
 
@@ -84,6 +126,29 @@ Die Schlüssel unter `sheet.answers` verbinden Sheet und Bewertungsmodell:
   `filter: true` für einen Dropdown-Filter, `wide: true` für Freitext).
 - Anderes Bewertungsmodell → `config/scoring.json` anpassen (Gewichte, Stufen,
   Tiers, Haushaltsregel). Der Code bleibt gleich.
+
+Nur die Dimensionen unter `weights` fließen in den Score ein; fehlt eine
+Antwort, wird auf die vorhandenen Gewichte renormiert. Es gibt zwei Arten von
+Dimensionen:
+
+- **Spezial-Scorer** für `income` (Beträge und Spannen werden geparst,
+  Stufenmodell), `invested` (Beträge/Sparraten) und `employment` (Stichwort →
+  Score).
+- **Regel-Dimensionen** für alles andere: eine Liste `rules` mit
+  `{ "match": "…", "score": 0…1 }`, von oben nach unten als Teilstring geprüft,
+  plus optionalem `default`. So lässt sich jede neue Frage bewerten – z. B.
+  Dringlichkeit, Alter oder Zielgruppen-Fit – **ohne Code**.
+
+```jsonc
+"urgency": {
+  "rules": [
+    { "match": "sofort", "score": 1.0 },
+    { "match": "nächsten wochen", "score": 0.9 },
+    { "match": "jahr", "score": 0.25 }
+  ],
+  "default": 0.4
+}
+```
 
 ### Logo
 
@@ -130,6 +195,13 @@ cp .env.example .env    # und ausfüllen
 npm run dev             # Server + Vite, http://localhost:5173
 npm test                # muss grün sein
 ```
+
+`npm test` enthält `server/project.test.mjs`: Der Test prüft die **aktuelle**
+`project.config.json` gegen ein Abbild der echten Sheet-Kopfzeilen –
+Tabellen-Erkennung, Spalten, UTM-Rollen und Scoring. Ändert sich das Sheet,
+schlägt er fehl, statt dass das Dashboard still falsche Zahlen zeigt. Beim
+Aufsetzen eines neuen Projekts die Fixtures dort durch die eigenen Kopfzeilen
+ersetzen.
 
 ## 7. Deployen (Render)
 
@@ -201,9 +273,11 @@ Ad-Status.
 - [ ] `config/project.config.json`: Name, Subtitle, Slug, Akzentfarbe, Logo
 - [ ] `config/project.config.json`: `features.hasTickets` / `hasQuality` gesetzt
 - [ ] `config/project.config.json`: `labels.ticket` passend benannt
+- [ ] `config/project.config.json`: `sheet.utmRoles` gegen das echte URL-Schema geprüft
 - [ ] `config/project.config.json`: `sheet.detect` und `sheet.columns` gegen das echte Sheet geprüft
 - [ ] `config/project.config.json`: `sheet.answers` auf den neuen Fragebogen gemappt
-- [ ] `config/campaigns.json`: `organicPatterns` auf den neuen Kampagnen-Slug
+- [ ] `config/campaigns.json`: `organicPatterns` und `paidMediums` geprüft
+- [ ] `server/project.test.mjs`: Fixtures auf die echten Sheet-Kopfzeilen umgestellt
 - [ ] `config/scoring.json`: Bewertungsmodell geprüft (oder unverändert übernommen)
 - [ ] `web/public/logo.svg` ersetzt
 - [ ] `render.yaml`: `name` angepasst

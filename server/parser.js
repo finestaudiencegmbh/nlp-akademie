@@ -43,6 +43,7 @@ export const DEFAULT_SHEET_CONFIG = {
       utmMedium: ['utm_medium'],
       utmCampaign: ['utm_campaign'],
       utmTerm: ['utm_term'],
+      utmContent: ['utm_content'],
     },
     tickets: {
       date: ['teilgenommen am'],
@@ -55,6 +56,7 @@ export const DEFAULT_SHEET_CONFIG = {
       utmMedium: ['utm_medium'],
       utmCampaign: ['utm_campaign'],
       utmTerm: ['utm_term'],
+      utmContent: ['utm_content'],
     },
     overview: {
       status: ['status'],
@@ -129,7 +131,13 @@ function parseDate(s) {
   // "2026-05-26 18:46:08 +0000"). Verhindert, dass Zähl-/Summenzeilen
   // wie "161" fälschlich als Datum (Jahr 161) interpretiert werden.
   if (!/^\d{4}-\d{2}-\d{2}/.test(v)) return null;
-  const d = new Date(v.replace(' +0000', 'Z').replace(' ', 'T'));
+  let iso = v.replace(' +0000', 'Z').replace(' ', 'T');
+  // Ohne Zonenangabe ("2026-09-11T22:40:45") würde Node die SERVER-Zeitzone
+  // annehmen – je nach Host verschiebt sich dann der Tag. Die Sheet-Zeit ist
+  // bereits die gewünschte Ortszeit, also 1:1 als UTC lesen (das Frontend
+  // formatiert ebenfalls mit timeZone UTC).
+  if (!/(Z|[+-]\d{2}:?\d{2})$/.test(iso)) iso += 'Z';
+  const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
@@ -201,13 +209,19 @@ function parseOverviewRow(o, cols) {
   };
 }
 
-/** UTM-Block aus einer Zeile lesen (Spaltennamen aus der Config). */
+/**
+ * UTM-Block aus einer Zeile lesen (Spaltennamen aus der Config). Die Zuordnung
+ * "welcher UTM-Parameter ist Kampagne/Anzeigengruppe/Creative/Placement"
+ * passiert NICHT hier, sondern in build.js (sheet.utmRoles) – je nach
+ * URL-Schema des Werbekontos.
+ */
 function utmOf(o, cols) {
   return {
     source: norm(pick(o, cols.utmSource)),
     medium: norm(pick(o, cols.utmMedium)),
     campaign: norm(pick(o, cols.utmCampaign)),
     term: norm(pick(o, cols.utmTerm)),
+    content: norm(pick(o, cols.utmContent)),
   };
 }
 

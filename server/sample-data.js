@@ -3,42 +3,72 @@
  * Dienen nur dazu, das Dashboard ohne Google-Anbindung sofort ansehbar zu
  * machen. Struktur identisch zu den geparsten Sheet-Daten, fließt also durch
  * dieselbe buildDataset-Pipeline.
+ *
+ * Die UTM-Werte werden nach dem Rollen-Mapping des Projekts erzeugt
+ * (sheet.utmRoles), damit der Demo-Modus genauso aussieht wie später die
+ * echten Daten. Die Fragebogen-Antworten werden für die Schlüssel erzeugt,
+ * die das Projekt kennt – unbekannte bleiben leer.
  */
 
+import { DEFAULT_UTM_ROLES } from './build.js';
+
 const campaigns = [
-  'J&P | MMV 15.06.-18.06. | ABO | 260526',
-  'J&P | MMV 15.06.-18.06. | ABO LP3 | 260526',
+  'Workshop | Kaltakquise | CBO | 101026',
+  'Workshop | Retargeting | ABO | 101026',
 ];
 const adsets = [
-  'J&P | LP 1 | Broad | DACH | W | 30-55',
-  'J&P | LP 2 | Broad | DACH | W | 30-55',
-  'J&P | LP 1 | LaL 1% Kunden und Absolventen MP + TM | DACH | W | 30-55',
-  'AG1: J&P | LP 3 | Broad | DACH | W | 30-55',
-  'AG2: J&P | LP 3 | LaL 1% Kunden und Absolventen MP + TM | DACH | W | 30-55',
+  'Broad | DACH | 30+',
+  'Broad | CH | 30+',
+  'Interessen | Persönlichkeitsentwicklung | DACH',
+  'LaL 1% Käufer | DACH',
+  'Retargeting | Websitebesucher 180 Tage',
 ];
-const creatives = ['Static 5', 'Static 10', 'Static 16', 'Static 19', 'Reel 3'];
+const creatives = ['Video Hook A', 'Video Hook B', 'Static 2', 'Static 7', 'Reel 3'];
 const placements = ['Instagram_Feed', 'Facebook_Mobile_Feed', 'Instagram_Reels', 'Instagram_Stories'];
 
-const incomes = [
-  '1.000-1.500 € im Monat',
-  '1.500-2.500 € im Monat',
-  '2.500-3.500 im Monat',
-  '3.500-5.000 im Monat',
-  '5.000-7.500 im Monat',
-];
-const employments = ['Angestellt', 'Selbstständig', 'Unternehmer', 'Arbeitssuchend', 'In Elternzeit'];
-const realEstate = ['Nein', 'Ja, eine', 'Ja, mehrere', 'Noch nicht'];
-const investedOptions = ['Nein', '4000', '10000', 'Ja, monatlich mindestens 300-400€', 'Noch nicht', '25000'];
+/** Antwort-Pools je bekanntem Fragebogen-Schlüssel (nur für die Demo). */
+const ANSWER_POOLS = {
+  income: ['unter 1.000 €', '1.000 - 1.999 €', '2.000 - 2.999 €', '3.000 - 3.999 €', '4.000 - 4.999 €', 'ab 5.000 €'],
+  urgency: ['Sofort', 'In den nächsten Wochen', 'In den nächsten Monaten', 'Innerhalb eines Jahres', 'Irgendwann'],
+  employment: ['Angestellt', 'Selbstständig', 'Unternehmer', 'In Elternzeit', 'Student'],
+  age: ['20-29 Jahre', '30-39 Jahre', '40-49 Jahre', '50-59 Jahre', '60+ Jahre'],
+  challenge: ['Zu wenig Zeit', 'Allem gerecht werden', 'Fehlende Struktur', 'Unklare Ziele'],
+  expectation: ['Klarer Plan', 'Ich möchte weiterkommen', 'Konkrete Werkzeuge'],
+  realEstate: ['Nein', 'Ja, eine', 'Ja, mehrere', 'Noch nicht'],
+  invested: ['Nein', '4000', '10000', 'Ja, monatlich 300-400 €', '25000'],
+  relationship: ['Ledig', 'In einer Beziehung', 'Verheiratet'],
+};
 
 function rand(arr, i) {
   return arr[i % arr.length];
 }
 
-export function getSampleParsed() {
+/** Baut den UTM-Block so, wie ihn das Rollen-Mapping des Projekts erwartet. */
+function utmFor(roles, { campaign, adset, creative, placement }) {
+  const utm = { source: 'meta', medium: 'paid', campaign: '', term: '', content: '' };
+  const values = { campaign, adset, creative, placement };
+  for (const [role, param] of Object.entries(roles)) {
+    if (param && values[role] != null) utm[param] = values[role];
+  }
+  return utm;
+}
+
+export function getSampleParsed(project = {}) {
+  const roles = { ...DEFAULT_UTM_ROLES, ...(project?.sheet?.utmRoles || {}) };
+  const answerKeys = Object.keys(project?.sheet?.answers || {});
   const leads = [];
   const tickets = [];
   let seed = 7;
   const next = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+
+  const answersFor = (i) => {
+    const out = {};
+    for (const key of answerKeys) {
+      const pool = ANSWER_POOLS[key];
+      out[key] = pool ? rand(pool, Math.floor(next() * pool.length)) : '';
+    }
+    return out;
+  };
 
   for (let i = 0; i < 48; i++) {
     const campaign = i % 5 < 3 ? campaigns[0] : campaigns[1];
@@ -49,17 +79,13 @@ export function getSampleParsed() {
     const day = 24 + (i % 4);
     const wonAt = new Date(Date.UTC(2026, 4, day, 10 + (i % 12), (i * 7) % 60, 0)).toISOString();
     const gotTicket = next() < 0.45;
+    const utm = utmFor(roles, { campaign, adset, creative, placement });
     leads.push({
       wonAt,
       firstName: `Demo${i}`,
       lastName: 'Person',
       email,
-      utm: {
-        source: adset,
-        medium: `${adset.includes('LP 3') ? 'AG1 LP 3' : adset.match(/LP \d/)?.[0] || 'LP 2'} - ${creative}`,
-        campaign,
-        term: placement,
-      },
+      utm,
       ticketAt: gotTicket ? wonAt : null,
     });
     if (gotTicket) {
@@ -70,16 +96,8 @@ export function getSampleParsed() {
         email,
         emailTypeform: email,
         phone: `+49150${String(1000000 + i)}`,
-        answers: {
-          employment: rand(employments, Math.floor(next() * 5)),
-          challenge: 'Demo-Antwort',
-          income: rand(incomes, Math.floor(next() * 5)),
-          realEstate: rand(realEstate, Math.floor(next() * 4)),
-          invested: rand(investedOptions, Math.floor(next() * 6)),
-          relationship: 'Ledig',
-          expectation: 'Klarer Plan',
-        },
-        utm: { source: adset, medium: '', campaign, term: placement },
+        answers: answersFor(i),
+        utm: { ...utm },
       });
     }
   }
@@ -91,11 +109,14 @@ export function getSampleParsed() {
       firstName: `Organic${i}`,
       lastName: 'Person',
       email: `demo.organic${i}@example.com`,
-      utm: { source: rand(['instagram', 'fb-bio', 'yt-bio'], i), medium: 'bio', campaign: 'moneymaker-workshop-2026', term: 'workshop-anmeldung' },
+      utm: { source: rand(['instagram', 'facebook', 'youtube'], i), medium: 'manychat', campaign: 'workshop-anmeldung', term: '', content: '' },
       ticketAt: null,
     });
   }
 
+  // Adspend-Übersicht je Anzeigengruppe. Im echten Betrieb kommen die
+  // Ad-Kosten aus der Meta-API; in der Demo simuliert das hier die Zahlen,
+  // damit CPL & Co. nicht leer bleiben.
   const overview = adsets.map((adset, i) => ({
     status: i % 3 === 0 ? 'AUS' : 'AN',
     adset,

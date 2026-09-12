@@ -64,10 +64,10 @@ async function loadDataset({ refresh = false, from = '', to = '' } = {}) {
     parsed = parseSheets(sheets, PROJECT.sheet, features);
     source = 'google';
   } else {
-    parsed = getSampleParsed();
+    parsed = getSampleParsed(PROJECT);
     source = 'demo';
   }
-  const dataset = buildDataset(parsed, cfg, features);
+  const dataset = buildDataset(parsed, cfg, features, PROJECT.sheet.utmRoles);
 
   // Facebook-Ads-Daten: bevorzugt direkt über die Meta Marketing API,
   // alternativ über Supermetrics. Fehler hier dürfen das Sheet-Dashboard

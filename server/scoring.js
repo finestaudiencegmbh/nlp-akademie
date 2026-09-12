@@ -71,13 +71,19 @@ function scoreInvested(text, cfg) {
   return cfg.invested.yesGeneric;
 }
 
-function scoreRealEstate(text, cfg) {
-  if (!text) return null;
+/**
+ * Generischer Regel-Scorer: prüft die 'rules' einer Dimension der Reihe nach als
+ * Teilstring (case-insensitiv) und liefert den Score der ersten passenden Regel.
+ * Damit lässt sich JEDE Fragebogen-Dimension in scoring.json bewerten, ohne
+ * Code anzufassen – z. B. Dringlichkeit, Alter, Zielgruppen-Fit.
+ */
+function scoreByRules(text, dimCfg) {
+  if (!text || !dimCfg || !Array.isArray(dimCfg.rules)) return null;
   const t = String(text).toLowerCase();
-  for (const rule of cfg.realEstate.rules) {
-    if (t.includes(rule.match)) return rule.score;
+  for (const rule of dimCfg.rules) {
+    if (t.includes(String(rule.match).toLowerCase())) return rule.score;
   }
-  return null;
+  return dimCfg.default ?? null;
 }
 
 function scoreEmployment(text, cfg) {
@@ -110,18 +116,20 @@ function tierFor(score, cfg) {
  */
 export function computeQuality(answers, cfg) {
   if (!answers) return null;
-  const subs = {
-    income: scoreIncome(answers.income, cfg),
-    invested: scoreInvested(answers.invested, cfg),
-    realEstate: scoreRealEstate(answers.realEstate, cfg),
-    employment: scoreEmployment(answers.employment, cfg),
+  // Spezial-Scorer für Dimensionen mit eigener Logik (Beträge parsen etc.).
+  // Alle anderen Dimensionen werden über ihre 'rules' in scoring.json bewertet.
+  const special = {
+    income: () => (cfg.income ? scoreIncome(answers.income, cfg) : null),
+    invested: () => (cfg.invested ? scoreInvested(answers.invested, cfg) : null),
+    employment: () => (cfg.employment?.scores ? scoreEmployment(answers.employment, cfg) : null),
   };
+  const scoreDim = (dim) => (special[dim] ? special[dim]() : scoreByRules(answers[dim], cfg[dim]));
 
   let sumW = 0;
   let sum = 0;
   const breakdown = {};
   for (const dim of Object.keys(cfg.weights)) {
-    const s = subs[dim];
+    const s = scoreDim(dim);
     const w = cfg.weights[dim];
     breakdown[dim] = s == null ? null : Math.round(s * 100);
     if (s != null) {

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { uniqueValues, answerValues } from '../lib.js';
+import { useProject } from '../project.jsx';
 
 function Select({ label, value, onChange, options, allLabel = 'Alle' }) {
   return (
@@ -16,8 +17,13 @@ function Select({ label, value, onChange, options, allLabel = 'Alle' }) {
 }
 
 export default function Filters({ leads, filters, setFilters, tiers, onReset }) {
+  const { features, answers } = useProject();
+  const { hasQuality } = features;
   const [showAdvanced, setShowAdvanced] = useState(false);
   const set = (patch) => setFilters((f) => ({ ...f, ...patch }));
+  // Fragebogen-Filter: welche Antworten filterbar sind, steht in der Config.
+  const answerFilters = hasQuality ? Object.entries(answers).filter(([, a]) => a.filter) : [];
+  const setAnswer = (key, value) => setFilters((f) => ({ ...f, answers: { ...(f.answers || {}), [key]: value } }));
   const toggleTier = (key) => {
     set({
       tiers: filters.tiers.includes(key)
@@ -59,21 +65,25 @@ export default function Filters({ leads, filters, setFilters, tiers, onReset }) 
             <Select label="Placement" value={filters.placement} onChange={(v) => set({ placement: v })} options={uniqueValues(leads, 'placement')} />
           </div>
 
-          <div className="filters-row">
-            <Select label="Einkommen" value={filters.income} onChange={(v) => set({ income: v })} options={answerValues(leads, 'income')} />
-            <Select label="Immobilien" value={filters.realEstate} onChange={(v) => set({ realEstate: v })} options={answerValues(leads, 'realEstate')} />
-            <Select label="Beschäftigung" value={filters.employment} onChange={(v) => set({ employment: v })} options={answerValues(leads, 'employment')} />
-          </div>
+          {answerFilters.length > 0 && (
+            <div className="filters-row">
+              {answerFilters.map(([key, a]) => (
+                <Select key={key} label={a.label} value={(filters.answers || {})[key] || ''} onChange={(v) => setAnswer(key, v)} options={answerValues(leads, key)} />
+              ))}
+            </div>
+          )}
 
-          <div className="filters-row tier-row">
-            <span className="tier-label">Qualität:</span>
-            {tiers.map((t) => (
-              <button key={t.key} className={`tier-chip ${filters.tiers.includes(t.key) ? 'active' : ''}`} style={filters.tiers.includes(t.key) ? { background: t.color, borderColor: t.color } : { borderColor: t.color, color: t.color }} onClick={() => toggleTier(t.key)}>
-                {t.label}
-              </button>
-            ))}
-            <button className={`tier-chip ${filters.tiers.includes('none') ? 'active' : ''}`} onClick={() => toggleTier('none')}>ohne Score</button>
-          </div>
+          {hasQuality && tiers.length > 0 && (
+            <div className="filters-row tier-row">
+              <span className="tier-label">Qualität:</span>
+              {tiers.map((t) => (
+                <button key={t.key} className={`tier-chip ${filters.tiers.includes(t.key) ? 'active' : ''}`} style={filters.tiers.includes(t.key) ? { background: t.color, borderColor: t.color } : { borderColor: t.color, color: t.color }} onClick={() => toggleTier(t.key)}>
+                  {t.label}
+                </button>
+              ))}
+              <button className={`tier-chip ${filters.tiers.includes('none') ? 'active' : ''}`} onClick={() => toggleTier('none')}>ohne Score</button>
+            </div>
+          )}
         </div>
       )}
     </div>

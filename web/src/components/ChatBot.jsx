@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useProject } from '../project.jsx';
 
 /**
  * Schwebender KI-Chat. Stellt Fragen an /api/chat mit dem aktuellen Zeitraum.
@@ -6,12 +7,19 @@ import React, { useState, useRef, useEffect } from 'react';
  * Zeitraum passen.
  */
 export default function ChatBot({ range }) {
+  const { features } = useProject();
   const [open, setOpen] = useState(false);
   const [available, setAvailable] = useState(null);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
-  const [msgs, setMsgs] = useState([
-    { role: 'assistant', content: 'Hi! Frag mich z. B. „Wie ist die Lead-Qualität heute?" oder „Welches Creative bringt den günstigsten CPL?"' },
+  // Beispielfrage passend zu den aktiven Features
+  const [msgs, setMsgs] = useState(() => [
+    {
+      role: 'assistant',
+      content: features.hasQuality
+        ? 'Hi! Frag mich z. B. „Wie ist die Lead-Qualität heute?" oder „Welches Creative bringt den günstigsten CPL?"'
+        : 'Hi! Frag mich z. B. „Welche Kampagne bringt die meisten Leads?" oder „Welches Creative hat den günstigsten CPL?"',
+    },
   ]);
   const bodyRef = useRef(null);
 
@@ -74,7 +82,7 @@ export default function ChatBot({ range }) {
             <textarea
               rows={1}
               value={input}
-              placeholder="Frage zu Leads, Kampagnen, Qualität…"
+              placeholder={features.hasQuality ? 'Frage zu Leads, Kampagnen, Qualität…' : 'Frage zu Leads und Kampagnen…'}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKey}
             />

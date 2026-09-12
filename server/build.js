@@ -56,7 +56,8 @@ function isOrganicSource(utm, patterns) {
  * tauchen in der Adspend-Übersicht auf. Alles andere gilt als organisch.
  */
 function isPaid(utm, paidAdsets, patterns) {
-  // Harte Regel: ManyChat / Bio / moneymaker-workshop ist immer organisch.
+  // Harte Regel: was in config/campaigns.json unter organicPatterns steht
+  // (z. B. ManyChat, Bio, der Kampagnen-Slug), gilt immer als organisch.
   if (isOrganicSource(utm, patterns)) return false;
   const src = collapse(utm.source);
   if (!src) return false;
@@ -74,7 +75,8 @@ function isPaid(utm, paidAdsets, patterns) {
  * Führt Leads, VIP-Tickets und Adspend-Übersicht zu einem einheitlichen
  * Datensatz zusammen. Join über die E-Mail-Adresse.
  */
-export function buildDataset({ leads, tickets, overview }, cfg) {
+export function buildDataset({ leads, tickets, overview }, cfg, features = {}) {
+  const { hasTickets = true, hasQuality = true } = features;
   const warnings = [];
   const paidAdsets = new Set(overview.map((o) => o.adset.toLowerCase()));
   const campCfg = loadCampaignConfig();
@@ -99,7 +101,7 @@ export function buildDataset({ leads, tickets, overview }, cfg) {
   // Antworten/Qualität aus dem VIP-Tab nach E-Mail indizieren (zum Anreichern
   // der Lead-Zeilen; verändert NICHT die Lead-Anzahl).
   const ticketByEmail = new Map();
-  for (const t of tickets) {
+  for (const t of (hasTickets ? tickets : [])) {
     for (const e of [t.email, t.emailTypeform]) {
       if (e && !ticketByEmail.has(e)) ticketByEmail.set(e, t);
     }
@@ -121,7 +123,9 @@ export function buildDataset({ leads, tickets, overview }, cfg) {
     const t = email ? ticketByEmail.get(email) : null;
     // Kanonische Ticket-Identität (für die Einmal-Wertung)
     const identity = t?.email || email;
-    const isCandidate = Boolean(t) || Boolean(l.ticketAt);
+    // Ohne Ticket-Feature gibt es keine zweite Stufe – auch eine (evtl. noch
+    // vorhandene) Ticket-Spalte in der Lead-Zeile wird dann ignoriert.
+    const isCandidate = hasTickets && (Boolean(t) || Boolean(l.ticketAt));
     let isTicketRow = false;
     if (isCandidate) {
       if (!identity) {
@@ -146,13 +150,13 @@ export function buildDataset({ leads, tickets, overview }, cfg) {
       // UTM des TICKETS selbst (für ticket-eigene Attribution) – aus dem Tickets-
       // Tab, sonst (Spalte ohne Typeform-Match) die Lead-UTM.
       ticketUtm: isTicketRow ? (t && t.utm ? { ...t.utm } : { ...l.utm }) : null,
-      answers: t?.answers || null,
+      answers: hasQuality ? (t?.answers || null) : null,
     });
   }
 
   // 2) VIP-Tickets, deren E-Mail in KEINER Lead-Zeile vorkommt, als eigene
   //    Datensätze ergänzen (z. B. nur im VIP-Tab erfasste Personen).
-  for (const t of tickets) {
+  for (const t of (hasTickets ? tickets : [])) {
     // mit einer Lead-Zeile verknüpft? (beide Mail-Varianten prüfen)
     if ((t.email && seenLeadEmails.has(t.email)) || (t.emailTypeform && seenLeadEmails.has(t.emailTypeform))) continue;
     const identity = t.email || t.emailTypeform || '';
@@ -169,7 +173,7 @@ export function buildDataset({ leads, tickets, overview }, cfg) {
       hasTicket: true,
       utm: { ...t.utm },
       ticketUtm: { ...t.utm },
-      answers: t.answers || null,
+      answers: hasQuality ? (t.answers || null) : null,
     });
   }
 
@@ -180,7 +184,7 @@ export function buildDataset({ leads, tickets, overview }, cfg) {
     const ld = dimsFor(r.utm);
     const paid = ld.paid;
     const { campaign, adset, creative } = ld;
-    const quality = r.hasTicket ? computeQuality(r.answers, cfg) : null;
+    const quality = hasQuality && r.hasTicket ? computeQuality(r.answers, cfg) : null;
 
     // Ticket-Dimensionen aus der TICKET-EIGENEN UTM (damit ein Ticket dort zählt,
     // wo es wirklich entstand – nicht in jeder Kampagne, in der die Person Lead war)

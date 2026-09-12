@@ -11,6 +11,7 @@ import CampaignCards from './components/CampaignCards.jsx';
 import DateRangePicker from './components/DateRangePicker.jsx';
 import SourcesView from './components/SourcesView.jsx';
 import ChatBot from './components/ChatBot.jsx';
+import { useProject } from './project.jsx';
 import { fmtEur, fmtInt } from './lib.js';
 
 const NAV = [
@@ -22,10 +23,15 @@ const NAV = [
 
 const EMPTY_FILTERS = {
   search: '', sourceType: 'all', campaign: '', adset: '', creative: '', placement: '',
-  income: '', realEstate: '', employment: '', from: '', to: '', onlyTickets: false, tiers: [],
+  // answers = { <fragebogenSchlüssel>: <wert> }, aus der Projekt-Konfiguration
+  answers: {}, from: '', to: '', onlyTickets: false, tiers: [],
 };
 
 export default function App() {
+  const project = useProject();
+  const { features, labels, branding } = project;
+  const { hasTickets, hasQuality } = features;
+  const T = labels.ticket;
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -59,7 +65,7 @@ export default function App() {
   const fb = data?.fb || null;
   const hasFb = Boolean(fb?.byDim);
   const filtered = useMemo(() => (data ? applyFilters(data.leads, filters) : []), [data, filters]);
-  const kpis = useMemo(() => (data ? computeKpis(filtered, data.overviewByAdset, fb) : null), [data, filtered, fb]);
+  const kpis = useMemo(() => (data ? computeKpis(filtered, data.overviewByAdset, fb, features) : null), [data, filtered, fb, features]);
   const dist = useMemo(() => (data ? tierDistribution(filtered, tiers) : {}), [data, filtered, tiers]);
   // Stunden-Raster, wenn der gewählte Zeitraum genau EIN Tag ist (0–24 Uhr).
   const hourlyDay = (range.from && range.to && range.from === range.to) ? range.from : null;
@@ -84,15 +90,14 @@ export default function App() {
   }, [data, filtered, drill]);
 
   const UNATTRIB = '(Paid · nicht zuordenbar)';
-  const ORGANIC = '(organisch)';
 
   // Zwei getrennte Container: bezahlt (Meta) und organisch. Nicht zuordenbare
   // Paid-Leads werden ausgeblendet (verwirren in der Aufschlüsselung).
   const paidRows = useMemo(() => {
     if (!data) return [];
     const leads = drillLeads.filter((l) => l.sourceType === 'paid' && l.campaign !== UNATTRIB);
-    return aggregate(leads, tab, data.overviewByAdset, fb, drill);
-  }, [data, drillLeads, tab, fb, drill]);
+    return aggregate(leads, tab, data.overviewByAdset, fb, drill, { features });
+  }, [data, drillLeads, tab, fb, drill, features]);
 
   const organicRows = useMemo(() => {
     if (!data) return [];
@@ -105,10 +110,10 @@ export default function App() {
     const dim = orgDrill ? 'organicAdset' : 'organicCampaign';
     const rows = aggregate(
       leads.map((l) => ({ ...l, organicCampaign: l.organicCampaign || '(direkt)', organicAdset: l.organicAdset || '(direkt)' })),
-      dim, data.overviewByAdset, fb, {}, { addFbRows: false }
+      dim, data.overviewByAdset, fb, {}, { addFbRows: false, features }
     );
     return rows;
-  }, [data, filtered, fb, orgDrill]);
+  }, [data, filtered, fb, orgDrill, features]);
 
   // Drill-Down: Klick auf eine Zeile zoomt eine Ebene tiefer (lokaler Pfad).
   const DRILL_ORDER = ['campaign', 'adset', 'creative', 'placement'];
@@ -125,10 +130,10 @@ export default function App() {
     <div className="layout">
       <aside className="sidebar">
         <div className="brand">
-          <img className="brand-logo" src="/logo.svg" alt="MoneyMaker" width="40" height="40" />
+          <img className="brand-logo" src={branding.logo} alt={project.name} width="40" height="40" />
           <div className="brand-text">
-            <div className="brand-title">MoneyMaker</div>
-            <div className="brand-sub">Workshop · 15.–18.06.</div>
+            <div className="brand-title">{project.shortName || project.name}</div>
+            <div className="brand-sub">{project.subtitle}</div>
           </div>
         </div>
         <nav className="nav">
@@ -147,10 +152,10 @@ export default function App() {
       <main className="content">
         <header className="topbar">
           <div className="topbar-title">
-            <img className="topbar-logo" src="/logo.svg" alt="" width="34" height="34" />
+            <img className="topbar-logo" src={branding.logo} alt="" width="34" height="34" />
             <div>
               <h1>{NAV.find((n) => n.key === view)?.label}</h1>
-              <p className="subtitle">Lead- &amp; VIP-Ticket-Dashboard</p>
+              <p className="subtitle">{project.name}</p>
             </div>
             <div className="topbar-badges">
               {data?.source === 'demo' && <span className="demo-badge" title="Es werden synthetische Beispieldaten angezeigt.">DEMO</span>}
@@ -197,27 +202,29 @@ export default function App() {
               <>
                 {/* Graphen oben: Leads & Tickets breit, darunter Spend + CPL nebeneinander */}
                 <section className="panel">
-                  <div className="panel-head"><div><h2>Verlauf</h2><span className="panel-sub">{hourlyDay ? 'Leads/Tickets im Tagesverlauf (0–24 Uhr, minutengenau) · Maus zum Anzeigen' : 'Leads/Tickets (Sheet) & Ad-Spend/CPL (Facebook) pro Tag · Maus zum Anzeigen'}</span></div></div>
+                  <div className="panel-head"><div><h2>Verlauf</h2><span className="panel-sub">{hourlyDay
+                      ? `Leads${hasTickets ? `/${T.many}` : ''} im Tagesverlauf (0–24 Uhr, minutengenau) · Maus zum Anzeigen`
+                      : `Leads${hasTickets ? `/${T.many}` : ''} (Sheet) & Ad-Spend/CPL (Facebook) pro Tag · Maus zum Anzeigen`}</span></div></div>
                   <div className="charts-stack">
                     {hourlyDay ? (
                       <>
-                        <IntradayChart title="Leads & Tickets im Tagesverlauf" formatY={(v) => fmtInt(Math.round(v))}
+                        <IntradayChart title={`Leads${hasTickets ? ` & ${T.many}` : ''} im Tagesverlauf`} formatY={(v) => fmtInt(Math.round(v))}
                           series={[
                             { key: 'leads', label: 'Leads', color: '#5ec8d8', data: leadDaily.map((d) => ({ date: d.date, value: d.leads })) },
-                            { key: 'tickets', label: 'VIP-Tickets', color: '#6fcf97', data: leadDaily.map((d) => ({ date: d.date, value: d.tickets })) },
+                            ...(hasTickets ? [{ key: 'tickets', label: T.many, color: '#6fcf97', data: leadDaily.map((d) => ({ date: d.date, value: d.tickets })) }] : []),
                           ]} />
-                        <div className="info-note">Ad-Spend &amp; CPL sind aktuell nur pro Tag verfügbar – die Stundenwerte dafür folgen. Leads, Tickets &amp; Lead-Qualität siehst du oben minutengenau.</div>
+                        <div className="info-note">Ad-Spend &amp; CPL sind aktuell nur pro Tag verfügbar – die Stundenwerte dafür folgen. Die Sheet-Kennzahlen siehst du oben minutengenau.</div>
                       </>
                     ) : (
                       <>
-                        <TimeChart title="Leads & Tickets pro Tag" formatY={(v) => fmtInt(Math.round(v))}
+                        <TimeChart title={`Leads${hasTickets ? ` & ${T.many}` : ''} pro Tag`} formatY={(v) => fmtInt(Math.round(v))}
                           series={[
                             { key: 'leads', label: 'Leads', color: '#5ec8d8', data: leadDaily.map((d) => ({ date: d.date, value: d.leads })) },
-                            { key: 'tickets', label: 'VIP-Tickets', color: '#6fcf97', data: leadDaily.map((d) => ({ date: d.date, value: d.tickets })) },
+                            ...(hasTickets ? [{ key: 'tickets', label: T.many, color: '#6fcf97', data: leadDaily.map((d) => ({ date: d.date, value: d.tickets })) }] : []),
                           ]} />
                         <div className="charts-grid">
                           <TimeChart title="Ad-Spend pro Tag" formatY={(v) => fmtEur(Math.round(v))}
-                            series={[{ key: 'spend', label: 'Ad-Spend', color: '#d0bb5a', data: (hasFb && fb.daily ? fb.daily.spend : []).map((d) => ({ date: d.date, value: d.spend })) }]} />
+                            series={[{ key: 'spend', label: 'Ad-Spend', color: branding.accent, data: (hasFb && fb.daily ? fb.daily.spend : []).map((d) => ({ date: d.date, value: d.spend })) }]} />
                           <TimeChart title="CPL pro Tag" formatY={(v) => fmtEur(Math.round(v))}
                             series={[{ key: 'cpl', label: 'CPL (Ads)', color: '#a78bfa', data: cplDaily.map((d) => ({ date: d.date, value: d.value })) }]} />
                         </div>
@@ -290,7 +297,7 @@ export default function App() {
 
             {view === 'leads' && (
               <section className="panel">
-                <div className="panel-head"><div><h2>Alle Leads</h2><span className="panel-sub">Zeile anklicken für Details &amp; Fragebogen-Antworten</span></div></div>
+                <div className="panel-head"><div><h2>Alle Leads</h2><span className="panel-sub">{hasQuality ? 'Zeile anklicken für Details & Fragebogen-Antworten' : 'Alle Leads im gewählten Zeitraum'}</span></div></div>
                 <LeadsTable leads={filtered} tiers={tiers} />
               </section>
             )}
@@ -298,7 +305,9 @@ export default function App() {
             {view === 'sources' && <SourcesView leads={filtered} />}
 
             <footer className="footer">
-              {data.counts.leads} Leads · {data.counts.paidLeads} bezahlt · {data.counts.tickets} VIP-Tickets · {data.counts.scored} bewertet
+              {data.counts.leads} Leads · {data.counts.paidLeads} bezahlt
+              {hasTickets && ` · ${data.counts.tickets} ${T.many}`}
+              {hasQuality && ` · ${data.counts.scored} bewertet`}
               {' · '}Quelle: {data.source === 'google' ? 'Google Sheet (live)' : 'Demo'}
             </footer>
           </>

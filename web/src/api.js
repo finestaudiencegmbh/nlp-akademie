@@ -37,3 +37,10 @@ export async function fetchData({ refresh = false, from = '', to = '', retries =
     : (lastErr?.message || 'Verbindung fehlgeschlagen');
   throw new Error(msg);
 }
+
+/** Projekt-Konfiguration (Branding, Feature-Flags, Begriffe). */
+export async function fetchConfig() {
+  const res = await fetch('/api/config');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}

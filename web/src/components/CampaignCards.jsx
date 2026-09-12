@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { fmtEur, fmtInt, fmtPct, entityKey, minuteSeriesFromEvents } from '../lib.js';
+import { useProject } from '../project.jsx';
 import GraphPanel from './GraphPanel.jsx';
 
 /** Kleiner "Grafik"-Button (öffnet die Zeitreihen-Ansicht). */
@@ -18,8 +19,12 @@ function GraphBtn({ onClick, compact }) {
 const fmtEur2 = (n) => (n == null ? '–' : new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(n));
 const fmtScore = (n) => (n == null ? '–' : String(Math.round(n)));
 
-/** Kennzahlen in drei Sektionen – ohne horizontales Scrollen, alles umbruchfähig. */
+/** Kennzahlen in bis zu drei Sektionen – ohne horizontales Scrollen, alles
+ * umbruchfähig. Ticket-/Qualitäts-Kacheln nur, wenn das Projekt sie hat. */
 function Metrics({ n, leadHidden }) {
+  const { features, labels } = useProject();
+  const { hasTickets, hasQuality } = features;
+  const T = labels.ticket;
   const lead = (v) => (leadHidden ? '–' : v);
   const groups = [
     {
@@ -27,18 +32,17 @@ function Metrics({ n, leadHidden }) {
       items: [
         ['Adspend', fmtEur(n.spend)],
         ['Leads', lead(fmtInt(n.leads))],
-        ['Tickets', lead(fmtInt(n.tickets))],
+        ...(hasTickets ? [[T.many, lead(fmtInt(n.tickets))]] : []),
         ['€/Lead', lead(fmtEur(n.cpl))],
-        ['€/Ticket', lead(fmtEur(n.cpt))],
+        ...(hasTickets ? [[`€/${T.one}`, lead(fmtEur(n.cpt))]] : []),
       ],
     },
     {
-      title: 'Qualität & Funnel', cls: 'g-quality',
+      title: hasQuality ? 'Qualität & Funnel' : 'Funnel', cls: 'g-quality',
       items: [
-        ['Quali-Rate', lead(fmtPct(n.qualifiedRate))],
-        ['Ø Quali', lead(fmtScore(n.avgQuality))],
+        ...(hasQuality ? [['Quali-Rate', lead(fmtPct(n.qualifiedRate))], ['Ø Quali', lead(fmtScore(n.avgQuality))]] : []),
         ['CVR Start', lead(fmtPct(n.cvrStart))],
-        ['CVR Ticket', lead(fmtPct(n.cvrTicket))],
+        ...(hasTickets ? [[`CVR ${T.one}`, lead(fmtPct(n.cvrTicket))]] : []),
       ],
     },
     {
@@ -50,9 +54,9 @@ function Metrics({ n, leadHidden }) {
         ['Ausg. Klicks', fmtInt(n.outboundClicks)],
       ],
     },
-  ];
+  ].filter((g) => g.items.length > 0);
   return (
-    <div className="cc-metrics">
+    <div className="cc-metrics" style={{ '--cc-metric-cols': groups.length }}>
       {groups.map((g) => (
         <div key={g.title} className={`cc-group ${g.cls}`}>
           <div className="cc-group-title">{g.title}</div>
@@ -78,6 +82,19 @@ function StatusDot({ active }) {
 const LEVEL_LABEL = { campaign: 'Kampagne', adset: 'Anzeigengruppe', creative: 'Creative' };
 
 export default function CampaignCards({ hierarchy, dailyByEntity, intradayByEntity, intradayDay, accounts }) {
+  const { features, labels } = useProject();
+  const { hasTickets, hasQuality } = features;
+  const T = labels.ticket;
+  // Spalten der Anzeigen-Tabelle: Name + je nach Feature 5–7 Kennzahlen
+  const adCols = [
+    { label: 'Adspend', value: (ad) => fmtEur(ad.spend), always: true },
+    { label: 'Leads', value: (ad, hidden) => (hidden ? '–' : fmtInt(ad.leads)) },
+    { label: 'CPL', value: (ad, hidden) => (hidden ? '–' : fmtEur(ad.cpl)) },
+    ...(hasTickets ? [{ label: T.many, value: (ad, hidden) => (hidden ? '–' : fmtInt(ad.tickets)) }] : []),
+    ...(hasQuality ? [{ label: 'Quali-Rate', value: (ad, hidden) => (hidden ? '–' : fmtPct(ad.qualifiedRate)) }] : []),
+    { label: 'CVR Start', value: (ad, hidden) => (hidden ? '–' : fmtPct(ad.cvrStart)) },
+    { label: 'CTR ausg.', value: (ad) => fmtPct(ad.outboundCtr), always: true },
+  ];
   const [open, setOpen] = useState(() => new Set());
   const [onlyActive, setOnlyActive] = useState(true);
   const [graph, setGraph] = useState(null);
@@ -138,7 +155,7 @@ export default function CampaignCards({ hierarchy, dailyByEntity, intradayByEnti
                             <span className="cc-sm-item"><b>{fmtEur(a.spend)}</b> Adspend</span>
                             <span className="cc-sm-item"><b>{leadHidden ? '–' : fmtInt(a.leads)}</b> Leads</span>
                             <span className="cc-sm-item"><b>{leadHidden ? '–' : fmtEur(a.cpl)}</b> CPL</span>
-                            <span className="cc-sm-item"><b>{leadHidden ? '–' : fmtPct(a.qualifiedRate)}</b> Quali</span>
+                            {hasQuality && <span className="cc-sm-item"><b>{leadHidden ? '–' : fmtPct(a.qualifiedRate)}</b> Quali</span>}
                           </span>
                           {hasGraph('adset', { campaign: c.name, adset: a.name }) && <GraphBtn onClick={() => openGraph('adset', { campaign: c.name, adset: a.name }, a.name)} />}
                         </div>
@@ -146,32 +163,20 @@ export default function CampaignCards({ hierarchy, dailyByEntity, intradayByEnti
                           <div className="cc-sub-body">
                             <Metrics n={a} leadHidden={leadHidden} />
                             {ads.length > 0 && (
-                              <div className="cc-ads">
-                                <div className="cc-ad cc-ad-headrow">
+                              <div className="cc-ads" style={{ '--cc-ad-cols': adCols.length }}>
+                                <div className="cc-ad cc-ad-headrow" style={{ '--cc-ad-cols': adCols.length }}>
                                   <span className="cc-ad-name">Werbeanzeige</span>
-                                  <span>Adspend</span>
-                                  <span>Leads</span>
-                                  <span>CPL</span>
-                                  <span>Tickets</span>
-                                  <span>Quali-Rate</span>
-                                  <span>CVR Start</span>
-                                  <span>CTR ausg.</span>
+                                  {adCols.map((c) => <span key={c.label}>{c.label}</span>)}
                                 </div>
                                 {ads.map((ad) => (
-                                  <div key={ad.id} className={`cc-ad ${ad.active === false ? 'is-paused' : ''}`}>
+                                  <div key={ad.id} className={`cc-ad ${ad.active === false ? 'is-paused' : ''}`} style={{ '--cc-ad-cols': adCols.length }}>
                                     <span className="cc-ad-name" title={ad.name}>
                                       {ad.active != null && <span className={`status-dot ${ad.active ? 'on' : 'off'}`} />}
                                       <span className="cc-ad-label">{ad.name}</span>
                                       {ad.active === false && <span className="paused-tag">aus</span>}
                                       {hasGraph('creative', { campaign: c.name, adset: a.name, creative: ad.name }) && <GraphBtn compact onClick={() => openGraph('creative', { campaign: c.name, adset: a.name, creative: ad.name }, ad.name)} />}
                                     </span>
-                                    <span>{fmtEur(ad.spend)}</span>
-                                    <span>{leadHidden ? '–' : fmtInt(ad.leads)}</span>
-                                    <span>{leadHidden ? '–' : fmtEur(ad.cpl)}</span>
-                                    <span>{leadHidden ? '–' : fmtInt(ad.tickets)}</span>
-                                    <span>{leadHidden ? '–' : fmtPct(ad.qualifiedRate)}</span>
-                                    <span>{leadHidden ? '–' : fmtPct(ad.cvrStart)}</span>
-                                    <span>{fmtPct(ad.outboundCtr)}</span>
+                                    {adCols.map((c) => <span key={c.label}>{c.value(ad, leadHidden)}</span>)}
                                   </div>
                                 ))}
                               </div>

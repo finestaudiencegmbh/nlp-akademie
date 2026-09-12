@@ -1,10 +1,16 @@
-# Fuat & Marta · MoneyMaker-Workshop — Lead- & VIP-Ticket-Dashboard
+# Lead- & Kampagnen-Dashboard
 
-Eine lokale Web-App, die das Google-Tracking-Sheet **live ausliest** und auswertet:
-wie viele Leads jede **Kampagne**, **Anzeigengruppe**, jedes **Creative** und
-**Placement** gebracht hat – inklusive **Lead-Qualität**, abgeleitet aus den
-Antworten beim VIP-Ticket. Sortier- und filterbar, mit CSV-Export. Kein
-manuelles Übertragen ins Sheet mehr nötig.
+Eine Web-App, die ein Google-Tracking-Sheet **live ausliest** und mit den
+Facebook-Kennzahlen aus der Meta Marketing API zusammenführt: wie viele Leads
+jede **Kampagne**, **Anzeigengruppe**, jedes **Creative** und **Placement**
+gebracht hat – optional inklusive zweiter Conversion-Stufe (Ticket) und
+**Lead-Qualität** aus einem Fragebogen. Sortier- und filterbar, mit CSV-Export.
+
+> **Neues Projekt aufsetzen?** → [TEMPLATE.md](TEMPLATE.md). Alles
+> Projektspezifische – Name, Branding, Feature-Flags, Sheet-Spalten – steht in
+> [`config/project.config.json`](config/project.config.json), nicht im Code.
+> Welche Begriffe dieses README für die zweite Stufe benutzt („VIP-Ticket"),
+> legt die Config fest; ohne sie fallen die Ticket-Kennzahlen komplett weg.
 
 > Die App kann **gehostet** (teilbare URL mit Passwort) oder **lokal** laufen.
 > Weil personenbezogene Daten (Namen, E-Mails, Telefonnummern) enthalten sind,
@@ -37,7 +43,7 @@ Damit du eine **teilbare URL mit Passwort** bekommst, ohne lokal etwas zu
 installieren. Wir nutzen **Render** (kostenloser Tarif).
 
 1. Account auf <https://render.com> anlegen und **GitHub verbinden**.
-2. **New + → Blueprint** → dieses Repository (`mmv-fuatmarta`) auswählen.
+2. **New + → Blueprint** → dieses Repository auswählen.
    Render liest die mitgelieferte `render.yaml` automatisch.
 3. Beim Anlegen die abgefragten Werte (Secrets) ausfüllen:
    - `DASHBOARD_USER` und `DASHBOARD_PASSWORD` → frei wählbar. Das ist das Login,
@@ -46,7 +52,7 @@ installieren. Wir nutzen **Render** (kostenloser Tarif).
      JSON-Datei (siehe unten) als **eine Zeile** einfügen. *(Leer lassen = es
      startet erstmal im Demo-Modus.)*
 4. **Apply / Create** → Render baut und startet. Nach 1–2 Minuten bekommst du
-   eine URL wie `https://mmv-fuatmarta-dashboard.onrender.com`.
+   eine URL wie `https://<service-name>.onrender.com` (Name aus `render.yaml`).
 5. URL + Login an dein Team weitergeben. Fertig.
 
 > Hinweis: Im kostenlosen Render-Tarif „schläft" der Dienst nach ~15 Minuten
@@ -97,7 +103,7 @@ cp .env.example .env
 ```
 und ausfüllen:
 ```env
-SPREADSHEET_ID=1rxK4s-qh1Enbw5L_Ni37xikPEpFe82-5w_7GT-PX6ng
+SPREADSHEET_ID=<ID aus der Sheet-URL zwischen /d/ und /edit>
 GOOGLE_APPLICATION_CREDENTIALS=./service-account.json
 ```
 
@@ -113,7 +119,8 @@ Oben rechts sollte jetzt **„Stand: …"** mit dem echten Ladezeitpunkt stehen
 ## Wie das Sheet gelesen wird
 
 Die App erkennt die Tabellen **automatisch an ihren Kopfzeilen** – Tab-Namen
-oder Reihenfolge dürfen sich ändern:
+oder Reihenfolge dürfen sich ändern. Welche Kopfzeilen und Spalten gemeint sind,
+steht in `config/project.config.json` unter `sheet` (Standard-Mapping unten):
 
 | Tabelle | erkannt an | liefert |
 | --- | --- | --- |
@@ -134,8 +141,9 @@ Placement-Ebene liefert ihn die Facebook-Anbindung (Phase 2).
 
 ## Lead-Qualität anpassen
 
-Das Bewertungsmodell steht in [`config/scoring.json`](config/scoring.json) –
-**kein Code nötig**. Du kannst Gewichte, Einkommens-Skalierung und die
+Das Bewertungsmodell steht in [`config/scoring.json`](config/scoring.json), die
+Zuordnung der Fragebogen-Spalten in `config/project.config.json` unter
+`sheet.answers` – **kein Code nötig**. Du kannst Gewichte, Einkommens-Skalierung und die
 Tier-Grenzen (A–D) frei ändern. Nach dem Speichern im Dashboard **↻ Aktualisieren**.
 
 Standardgewichtung: Einkommen 40 %, investiertes Kapital 25 %,

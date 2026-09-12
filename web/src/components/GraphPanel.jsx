@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { fmtEur, fmtEur2, fmtInt, fmtPct, fmtScore } from '../lib.js';
+import { useProject } from '../project.jsx';
 
 /**
  * "Grafik"-Panel: Zeitreihe je Entität (Kampagne/Anzeigengruppe/Creative) mit
@@ -10,25 +11,25 @@ import { fmtEur, fmtEur2, fmtInt, fmtPct, fmtScore } from '../lib.js';
 
 // KPI-Katalog: value() leitet den Tageswert aus einem Datenpunkt ab,
 // total() den Periodenwert aus den Roh-Summen (für die Legende).
-const KPIS = [
-  { key: 'leads', label: 'Leads', color: '#d0bb5a', fmt: fmtInt, sheet: true,
+const buildKpis = ({ accent, features, ticket }) => [
+  { key: 'leads', label: 'Leads', color: accent, fmt: fmtInt, sheet: true,
     value: (p) => p.leads,
     total: (t) => t.leads },
-  { key: 'tickets', label: 'Tickets', color: '#6fcf97', fmt: fmtInt, sheet: true,
+  ...(features.hasTickets ? [{ key: 'tickets', label: ticket.many, color: '#6fcf97', fmt: fmtInt, sheet: true,
     value: (p) => p.tickets,
-    total: (t) => t.tickets },
-  { key: 'quality', label: 'Lead-Qualität', color: '#6dd47e', fmt: fmtScore, sheet: true,
+    total: (t) => t.tickets }] : []),
+  ...(features.hasQuality ? [{ key: 'quality', label: 'Lead-Qualität', color: '#6dd47e', fmt: fmtScore, sheet: true,
     value: (p) => p.quality,
-    total: (t) => (t.qLeads ? Math.round(t.qSum / t.qLeads) : null) },
+    total: (t) => (t.qLeads ? Math.round(t.qSum / t.qLeads) : null) }] : []),
   { key: 'spend', label: 'Adspend', color: '#9db4e8', fmt: fmtEur,
     value: (p) => p.spend,
     total: (t) => t.spend },
   { key: 'cpl', label: 'CPL (€/Lead)', color: '#5ad0c0', fmt: fmtEur2,
     value: (p) => (p.leads ? p.spend / p.leads : null),
     total: (t) => (t.leads ? t.spend / t.leads : null) },
-  { key: 'cpt', label: 'Kosten/Ticket', color: '#f2b705', fmt: fmtEur2,
+  ...(features.hasTickets ? [{ key: 'cpt', label: `Kosten/${ticket.one}`, color: '#f2b705', fmt: fmtEur2,
     value: (p) => (p.tickets ? p.spend / p.tickets : null),
-    total: (t) => (t.tickets ? t.spend / t.tickets : null) },
+    total: (t) => (t.tickets ? t.spend / t.tickets : null) }] : []),
   { key: 'cpm', label: 'CPM', color: '#7c9cff', fmt: fmtEur2,
     value: (p) => (p.impressions ? p.spend / (p.impressions / 1000) : null),
     total: (t) => (t.impressions ? t.spend / (t.impressions / 1000) : null) },
@@ -44,8 +45,14 @@ const PLATFORM_COLORS = ['#4267B2', '#E1306C', '#0a84ff', '#25D366', '#ff7849', 
 const platformLabel = (p) => ({ facebook: 'Facebook', instagram: 'Instagram', audience_network: 'Audience Network', messenger: 'Messenger', whatsapp: 'WhatsApp', unknown: 'Unbekannt' }[p] || (p ? p.charAt(0).toUpperCase() + p.slice(1) : 'Unbekannt'));
 
 export default function GraphPanel({ title, levelLabel, series, hourly = false, onClose }) {
+  const { branding, features, labels } = useProject();
+  // KPI-Katalog abhängig von den Projekt-Features (Tickets/Qualität).
+  const allKpis = useMemo(
+    () => buildKpis({ accent: branding.accent, features, ticket: labels.ticket }),
+    [branding.accent, features, labels.ticket]
+  );
   // Im Stunden-Modus (1 Tag) nur Sheet-KPIs – Meta-Spend ist noch nicht stündlich.
-  const kpiList = hourly ? KPIS.filter((k) => k.sheet) : KPIS;
+  const kpiList = useMemo(() => (hourly ? allKpis.filter((k) => k.sheet) : allKpis), [allKpis, hourly]);
   // Standard: Leads + CPL (Tag) bzw. Leads (Stunde)
   const [active, setActive] = useState(() => new Set(hourly ? ['leads'] : ['leads', 'cpl']));
   const [showPlatforms, setShowPlatforms] = useState(false);

@@ -1,10 +1,11 @@
 # Render.com Blueprint – Ein-Klick-Deployment des Dashboards.
-# Anleitung in der README ("Gehostet teilen"). Secrets (Service-Account,
-# Login) werden NICHT hier gespeichert, sondern beim Deploy abgefragt.
+# Anleitung in TEMPLATE.md. Secrets (Service-Account, Login, Tokens) werden
+# NICHT hier gespeichert, sondern beim Deploy abgefragt (sync: false).
+# Pro Projekt anzupassen: name (Service-/URL-Name).
 
 services:
   - type: web
-    name: mmv-fuatmarta-dashboard
+    name: workshop-lead-dashboard
     runtime: node
     plan: free
     # devDependencies (vite) werden für den Build gebraucht -> explizit mitinstallieren
@@ -17,8 +18,9 @@ services:
         value: "20"
       - key: NPM_CONFIG_PRODUCTION
         value: "false"
+      # --- Google Sheet (ID aus der Sheet-URL) – beim Deploy ausfüllen ---
       - key: SPREADSHEET_ID
-        value: 1rxK4s-qh1Enbw5L_Ni37xikPEpFe82-5w_7GT-PX6ng
+        sync: false
       - key: CACHE_TTL_SECONDS
         value: "900"
       # --- KI-Chatbot (optional) – Anthropic-API-Key ---

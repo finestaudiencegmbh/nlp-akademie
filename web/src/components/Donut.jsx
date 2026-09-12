@@ -1,12 +1,16 @@
 import React from 'react';
+import { useProject } from '../project.jsx';
 
 /**
  * Donut-Diagramm (SVG, ohne Library) mit Center-Label und Legende.
- * data: [{ key, count }]. Farben werden aus einer Palette zugewiesen.
+ * data: [{ key, count }]. Farben werden aus einer Palette zugewiesen; der erste
+ * Platz gehört der Projekt-Akzentfarbe, damit das Diagramm zum Branding passt.
  */
-const PALETTE = ['#5ec8d8', '#a78bfa', '#6fcf97', '#d0bb5a', '#f0883e', '#ec4899', '#60a5fa', '#94a3b8'];
+const PALETTE = ['#5ec8d8', '#a78bfa', '#6fcf97', '#f0883e', '#ec4899', '#60a5fa', '#94a3b8'];
 
 export default function Donut({ data, centerLabel = 'GESAMT', size = 220, thickness = 30 }) {
+  const { branding } = useProject();
+  const palette = [branding.accent, ...PALETTE];
   const total = data.reduce((s, d) => s + d.count, 0);
   const r = (size - thickness) / 2;
   const cx = size / 2;
@@ -17,7 +21,7 @@ export default function Donut({ data, centerLabel = 'GESAMT', size = 220, thickn
   const segments = data.map((d, i) => {
     const frac = total ? d.count / total : 0;
     const len = frac * circ;
-    const seg = { color: PALETTE[i % PALETTE.length], dasharray: `${len} ${circ - len}`, dashoffset: -offset, ...d, frac };
+    const seg = { color: palette[i % palette.length], dasharray: `${len} ${circ - len}`, dashoffset: -offset, ...d, frac };
     offset += len;
     return seg;
   });

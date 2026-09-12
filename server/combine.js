@@ -33,8 +33,13 @@ function emptyMetrics() {
   return { spend: 0, impressions: 0, clicks: 0, uoc: 0, leads: 0, tickets: 0, scoreSum: 0, scored: 0, qualified: 0 };
 }
 
-/** Leitet die abgeleiteten Kennzahlen aus den Rohsummen ab. */
-function derive(m) {
+/**
+ * Leitet die abgeleiteten Kennzahlen aus den Rohsummen ab.
+ * features: { hasTickets, hasQuality } – abgeschaltete Bereiche liefern null
+ * statt 0, damit das Frontend die Spalten sauber ausblenden kann.
+ */
+function derive(m, features = {}) {
+  const { hasTickets = true, hasQuality = true } = features;
   const cpm = m.impressions ? m.spend / (m.impressions / 1000) : null;
   const outboundCtr = m.impressions ? m.uoc / m.impressions : null; // individuell ausgehende CTR
   const cpoc = m.uoc ? m.spend / m.uoc : null; // individueller ausgehender Klickpreis
@@ -49,14 +54,14 @@ function derive(m) {
     outboundCtr,
     cpoc: round2(cpoc),
     leads: m.leads,
-    tickets: m.tickets,
+    tickets: hasTickets ? m.tickets : null,
     cpl: round2(cpl),
-    cpt: round2(cpt),
+    cpt: hasTickets ? round2(cpt) : null,
     lpConversion,
     cvrStart: lpConversion,
-    cvrTicket: m.leads ? m.tickets / m.leads : null, // Lead -> Ticket
-    avgQuality: m.scored ? Math.round(m.scoreSum / m.scored) : null,
-    qualifiedRate: m.tickets ? m.qualified / m.tickets : null,
+    cvrTicket: hasTickets && m.leads ? m.tickets / m.leads : null, // Lead -> Ticket
+    avgQuality: hasQuality && m.scored ? Math.round(m.scoreSum / m.scored) : null,
+    qualifiedRate: hasQuality && m.tickets ? m.qualified / m.tickets : null,
   };
 }
 
@@ -81,6 +86,8 @@ function pathKey(dim, { campaign, adset, creative }) {
  * @param {array}  leads  Lead-Records aus buildDataset (mit campaign/adset/creative, wonAt, hasTicket)
  */
 export function combineMetaWithLeads(meta, leads, opts = {}) {
+  const features = { hasTickets: true, hasQuality: true, ...(opts.features || {}) };
+  const { hasTickets, hasQuality } = features;
   const { entities = [], daily = [], dailyEntities = [], campaignStatus = {}, adsetStatus = {}, adStatus = {}, adList = [] } = meta || {};
 
   // Alle Ads je Anzeigengruppen-PFAD (Kampagne ▸ Anzeigengruppe), damit Anzeigen
@@ -167,7 +174,7 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
         if (!m.has(ck)) m.set(ck, l.creative);
       }
     }
-    if (l.hasTicket) {
+    if (hasTickets && l.hasTicket) {
       const tv = tView(l);
       for (const dim of ['campaign', 'adset', 'creative']) {
         if (!normKey(leafName(dim, tv))) continue;
@@ -175,7 +182,7 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
         if (!ticketBy[dim].has(k)) ticketBy[dim].set(k, { tickets: 0, scoreSum: 0, scored: 0, qualified: 0 });
         const e = ticketBy[dim].get(k);
         e.tickets += 1;
-        if (l.quality) {
+        if (hasQuality && l.quality) {
           e.scoreSum += l.quality.score;
           e.scored += 1;
           if (['A', 'B'].includes(l.quality.tier)) e.qualified += 1;
@@ -238,7 +245,7 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
       qualified: adLeads.qualified,
     };
     const adActive = resolveAdActive(e.campaign, e.adset, e.creative);
-    a.ads.push({ id: e.adId, name: e.creative, level: 'ad', active: adActive, ...derive(adM) });
+    a.ads.push({ id: e.adId, name: e.creative, level: 'ad', active: adActive, ...derive(adM, features) });
 
     // FB-Summen nach oben aggregieren
     for (const node of [a._m, c._m]) {
@@ -274,7 +281,7 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
         if (existingAdKeys.has(normKey(ad.name))) continue;
         existingAdKeys.add(normKey(ad.name));
         const adM = { spend: 0, impressions: 0, clicks: 0, uoc: 0, ...lookupLeads('creative', { campaign: c.name, adset: a.name, creative: ad.name }) };
-        a.ads.push({ id: ad.id, name: ad.name, level: 'ad', active: ad.active, ...derive(adM) });
+        a.ads.push({ id: ad.id, name: ad.name, level: 'ad', active: ad.active, ...derive(adM, features) });
       }
       // Creatives, die NUR im Sheet vorkommen (Leads vorhanden, aber weder in den
       // FB-Insights noch in Metas Ad-Liste) – mit ihren Lead-Kennzahlen ergänzen.
@@ -282,31 +289,31 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
         if (existingAdKeys.has(ck)) continue;
         existingAdKeys.add(ck);
         const adM = { spend: 0, impressions: 0, clicks: 0, uoc: 0, ...lookupLeads('creative', { campaign: c.name, adset: a.name, creative: cname }) };
-        a.ads.push({ id: `sheet:${ck}`, name: cname, level: 'ad', active: resolveAdActive(c.name, a.name, cname), ...derive(adM) });
+        a.ads.push({ id: `sheet:${ck}`, name: cname, level: 'ad', active: resolveAdActive(c.name, a.name, cname), ...derive(adM, features) });
       }
       adsets.push({
         id: a.id, name: a.name, level: 'adset', active: a.active, status: a.status,
-        ...derive(a._m),
+        ...derive(a._m, features),
         ads: a.ads.sort((x, y) => y.spend - x.spend),
       });
     }
     result.push({
       id: c.id, name: c.name, account: c.account, level: 'campaign', active: c.active, status: c.status,
       objective: c.objective, leadCampaign: c.leadCampaign,
-      ...derive(c._m),
+      ...derive(c._m, features),
       adsets: adsets.sort((x, y) => y.spend - x.spend),
     });
   }
   result.sort((x, y) => y.spend - x.spend);
 
   // Summen: gesamt vs. nur Lead-Kampagnen (für CPL/€-Ticket ohne Traffic-Spend)
-  const totals = { spend: 0, leadSpend: 0, impressions: 0, outboundClicks: 0, leads: 0, tickets: 0, nonLeadSpend: 0 };
+  const totals = { spend: 0, leadSpend: 0, impressions: 0, outboundClicks: 0, leads: 0, tickets: hasTickets ? 0 : null, nonLeadSpend: 0 };
   for (const c of result) {
     totals.spend += c.spend || 0;
     totals.impressions += c.impressions || 0;
     totals.outboundClicks += c.outboundClicks || 0;
     totals.leads += c.leads || 0;
-    totals.tickets += c.tickets || 0;
+    if (hasTickets) totals.tickets += c.tickets || 0;
     if (c.leadCampaign) totals.leadSpend += c.spend || 0;
     else totals.nonLeadSpend += c.spend || 0;
   }
@@ -327,7 +334,7 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
     if (!leadDay.has(day)) leadDay.set(day, { date: day, leads: 0, tickets: 0 });
     const e = leadDay.get(day);
     e.leads += 1;
-    if (l.hasTicket) e.tickets += 1;
+    if (hasTickets && l.hasTicket) e.tickets += 1;
   }
   const leadsByDay = [...leadDay.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
 
@@ -379,11 +386,11 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
   // Tagesreihen JE Entität (Kampagne/Anzeigengruppe/Creative) für die
   // "Grafik"-Ansicht: FB-Tagesdaten + Plattform-Split + Sheet-Leads/Tickets/
   // Qualität, alles je Tag. Schlüssel = normalisierter Name.
-  const dailyByEntity = buildDailyByEntity(dailyEntities, leads || []);
+  const dailyByEntity = buildDailyByEntity(dailyEntities, leads || [], features);
 
   // Minutengenaue Events je Entität (nur Sheet-KPIs: Leads/Tickets/Qualität),
   // wenn der Zeitraum genau EIN Tag ist. Meta-Spend ist hier (noch) nicht dabei.
-  const intradayByEntity = opts.hourlyDay ? buildIntradayByEntity(leads || [], opts.hourlyDay) : null;
+  const intradayByEntity = opts.hourlyDay ? buildIntradayByEntity(leads || [], opts.hourlyDay, features) : null;
 
   return {
     hierarchy: result,
@@ -404,7 +411,8 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
  * pro Plattform) und Sheet-Werten (leads/tickets/quality). Das Frontend leitet
  * daraus die überlagerbaren KPIs ab (CPL, CPM, CTR, CPC, €/Ticket, Qualität …).
  */
-function buildDailyByEntity(dailyEntities, leads) {
+function buildDailyByEntity(dailyEntities, leads, features = {}) {
+  const { hasTickets = true, hasQuality = true } = features;
   const dims = ['campaign', 'adset', 'creative'];
   const fb = { campaign: new Map(), adset: new Map(), creative: new Map() };
   const ensureDay = (map, key, date) => {
@@ -446,7 +454,7 @@ function buildDailyByEntity(dailyEntities, leads) {
       }
     }
     // Tickets/Qualität nach TICKET-Dimensionen (Ticket-Datum)
-    if (l.hasTicket) {
+    if (hasTickets && l.hasTicket) {
       const tday = (l.ticketAt || l.wonAt || '').slice(0, 10);
       const tv = { campaign: l.ticketCampaign ?? l.campaign, adset: l.ticketAdset ?? l.adset, creative: l.ticketCreative ?? l.creative };
       if (tday) {
@@ -455,7 +463,7 @@ function buildDailyByEntity(dailyEntities, leads) {
           if (!normKey(leaf)) continue;
           const d = ensureLeadDay(sheet[dim], pathKey(dim, tv), tday);
           d.tickets += 1;
-          if (l.quality) {
+          if (hasQuality && l.quality) {
             d.scoreSum += l.quality.score;
             d.scored += 1;
             if (['A', 'B'].includes(l.quality.tier)) d.qualified += 1;
@@ -482,8 +490,8 @@ function buildDailyByEntity(dailyEntities, leads) {
           uoc: f.uoc,
           platforms: f.platforms,
           leads: s.leads,
-          tickets: s.tickets,
-          quality: s.scored ? Math.round(s.scoreSum / s.scored) : null,
+          tickets: hasTickets ? s.tickets : null,
+          quality: hasQuality && s.scored ? Math.round(s.scoreSum / s.scored) : null,
         };
       });
     }
@@ -498,7 +506,8 @@ function buildDailyByEntity(dailyEntities, leads) {
  * Die Minute wird 1:1 aus dem Zeitstempel genommen – die Sheet-Zeit ist bereits
  * deutsche Ortszeit (per Zapier gesetzt), daher KEINE Zeitzonen-Umrechnung.
  */
-function buildIntradayByEntity(leads, day) {
+function buildIntradayByEntity(leads, day, features = {}) {
+  const { hasTickets = true, hasQuality = true } = features;
   const dims = ['campaign', 'adset', 'creative'];
   const out = { campaign: {}, adset: {}, creative: {} };
   for (const l of leads) {
@@ -509,7 +518,7 @@ function buildIntradayByEntity(leads, day) {
     if (!Number.isFinite(h) || !Number.isFinite(min)) continue;
     const m = h * 60 + min;
     if (!(m >= 0 && m < 1440)) continue;
-    const ev = { m, ticket: Boolean(l.hasTicket), quality: l.quality ? l.quality.score : null };
+    const ev = { m, ticket: hasTickets && Boolean(l.hasTicket), quality: hasQuality && l.quality ? l.quality.score : null };
     for (const dim of dims) {
       if (!normKey(l[dim])) continue;
       const key = pathKey(dim, l);

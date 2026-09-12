@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { loadProjectConfig } from './project.js';
 
 /**
  * KI-Chatbot für das Dashboard. Beantwortet inhaltsbezogene Fragen anhand der
@@ -15,13 +16,14 @@ export function isChatConfigured() {
 const MODEL = 'claude-opus-4-8';
 
 /** Verdichtet das Dashboard-Payload zu einem kompakten, anonymen Kontext. */
-export function buildContext(payload, filtered) {
+export function buildContext(payload, filtered, features = {}) {
+  const { hasTickets = true, hasQuality = true } = features;
   const round = (n) => (n == null ? null : Math.round(n * 100) / 100);
   const leads = filtered || payload.leads || [];
 
   const paid = leads.filter((l) => l.sourceType === 'paid');
   const organic = leads.filter((l) => l.sourceType !== 'paid');
-  const tickets = leads.filter((l) => l.hasTicket);
+  const tickets = hasTickets ? leads.filter((l) => l.hasTicket) : [];
   const scored = tickets.filter((l) => l.quality);
   const qualified = tickets.filter((l) => ['A', 'B'].includes(l.quality?.tier));
 
@@ -35,13 +37,18 @@ export function buildContext(payload, filtered) {
     const TICKET_DIM = { campaign: 'ticketCampaign', adset: 'ticketAdset', creative: 'ticketCreative' };
     const tKey = TICKET_DIM[key];
     const m = new Map();
-    const ensure = (k) => { if (!m.has(k)) m.set(k, { name: k, leads: 0, tickets: 0, qualified: 0 }); return m.get(k); };
+    const ensure = (k) => {
+      if (!m.has(k)) {
+        m.set(k, { name: k, leads: 0, ...(hasTickets ? { tickets: 0 } : {}), ...(hasQuality ? { qualified: 0 } : {}) });
+      }
+      return m.get(k);
+    };
     for (const l of leads) ensure(l[key] || '(unbekannt)').leads += 1;
     for (const l of leads) {
-      if (!l.hasTicket) continue;
+      if (!hasTickets || !l.hasTicket) continue;
       const e = ensure((tKey && l[tKey]) ? l[tKey] : (l[key] || '(unbekannt)'));
       e.tickets += 1;
-      if (['A', 'B'].includes(l.quality?.tier)) e.qualified += 1;
+      if (hasQuality && ['A', 'B'].includes(l.quality?.tier)) e.qualified += 1;
     }
     return [...m.values()].sort((a, b) => b.leads - a.leads).slice(0, 25);
   };
@@ -55,17 +62,21 @@ export function buildContext(payload, filtered) {
       leads_gesamt: leads.length,
       leads_bezahlt: paid.length,
       leads_organisch: organic.length,
-      vip_tickets: tickets.length,
-      qualifizierte_tickets: qualified.length,
-      quali_rate: tickets.length ? round(qualified.length / tickets.length) : null,
+      ...(hasTickets ? { tickets: tickets.length } : {}),
+      ...(hasQuality ? {
+        qualifizierte_tickets: qualified.length,
+        quali_rate: tickets.length ? round(qualified.length / tickets.length) : null,
+      } : {}),
       ad_spend_gesamt: round(fb.totals?.spend ?? null),
       ad_spend_lead_kampagnen: round(fb.totals?.leadSpend ?? null),
       ad_spend_traffic: round(fb.totals?.nonLeadSpend ?? null),
       impressionen: fb.totals?.impressions ?? null,
       cpl: fb.totals?.leadSpend && paid.length ? round(fb.totals.leadSpend / paid.length) : null,
-      kosten_pro_ticket: fb.totals?.leadSpend && tickets.length ? round(fb.totals.leadSpend / tickets.length) : null,
+      ...(hasTickets ? {
+        kosten_pro_ticket: fb.totals?.leadSpend && tickets.length ? round(fb.totals.leadSpend / tickets.length) : null,
+      } : {}),
     },
-    qualitaets_verteilung_tickets: tierDist,
+    ...(hasQuality ? { qualitaets_verteilung_tickets: tierDist } : {}),
     je_kampagne: byDim('campaign'),
     je_anzeigengruppe: byDim('adset'),
     je_creative: byDim('creative'),
@@ -79,16 +90,17 @@ export function buildContext(payload, filtered) {
     email: l.email,
     telefon: l.phone,
     lead_am: l.wonAt,
-    vip_am: l.ticketAt,
     quelle: l.sourceType,
     kampagne: l.campaign,
     anzeigengruppe: l.adset,
     creative: l.creative,
     placement: l.placement,
-    vip_ticket: l.hasTicket,
-    quali_score: l.quality?.score ?? null,
-    quali_tier: l.quality?.tier ?? null,
-    antworten: l.answers || null,
+    ...(hasTickets ? { ticket: l.hasTicket, ticket_am: l.ticketAt } : {}),
+    ...(hasQuality ? {
+      quali_score: l.quality?.score ?? null,
+      quali_tier: l.quality?.tier ?? null,
+      antworten: l.answers || null,
+    } : {}),
   }));
   if (leads.length > MAX_LEAD_ROWS) {
     ctx.leads_hinweis = `Nur die ersten ${MAX_LEAD_ROWS} von ${leads.length} Leads sind einzeln enthalten; die Summen oben decken alle ab.`;
@@ -98,27 +110,51 @@ export function buildContext(payload, filtered) {
   if (Array.isArray(fb.hierarchy)) {
     ctx.facebook_kampagnen = fb.hierarchy.slice(0, 25).map((c) => ({
       name: c.name, aktiv: c.active, traffic: c.leadCampaign === false,
-      spend: round(c.spend), leads: c.leads, tickets: c.tickets,
-      cpl: round(c.cpl), cpt: round(c.cpt), quali_rate: round(c.qualifiedRate),
+      spend: round(c.spend), leads: c.leads,
+      ...(hasTickets ? { tickets: c.tickets, cpt: round(c.cpt) } : {}),
+      ...(hasQuality ? { quali_rate: round(c.qualifiedRate) } : {}),
+      cpl: round(c.cpl),
       cpm: round(c.cpm), ausg_ctr: round(c.outboundCtr), ausg_cpc: round(c.cpoc),
     }));
   }
   return ctx;
 }
 
-const SYSTEM_PROMPT = `Du bist der Analyse-Assistent im Lead-Dashboard für den "Fuat & Marta MoneyMaker"-Workshop.
-Du beantwortest Fragen zu Werbe-Performance und Lead-Qualität auf Basis der dir gelieferten, bereits aggregierten Kennzahlen.
-
-Regeln:
-- Antworte kurz, präzise und auf Deutsch. Nutze konkrete Zahlen aus dem Kontext.
-- Rechne bei Bedarf abgeleitete Werte (z. B. Verhältnisse) sauber aus den vorhandenen Zahlen.
-- Beträge in Euro mit € und Tausenderpunkt; Raten in Prozent.
-- Wenn eine Zahl nicht im Kontext steht, sag das klar – erfinde nichts.
-- Der Kontext bezieht sich auf den aktuell im Dashboard gewählten Zeitraum/Filter.
-- Lead-Qualität: Tier A/B = qualifiziert; basiert v. a. auf Einkommen (Haushaltsregel: <3.500 € + Partner = schwach).
-- Dir liegen auch die einzelnen Leads inkl. Name, E-Mail, Telefon und Fragebogen-Antworten vor (internes Tool). Du darfst daraus konkrete Personen nennen, Listen erstellen (z. B. "alle qualifizierten Leads aus Kampagne X") und Kontaktdaten ausgeben, wenn danach gefragt wird.
-- Das Feld 'leads' enthält ggf. nur die ersten N Datensätze (siehe leads_hinweis); für Gesamtzahlen nutze die Summen/Verdichtungen.
-- Formatiere Vergleiche/Ranglisten/Lead-Listen als kurze Aufzählung oder Tabelle, wenn es hilft.`;
+/**
+ * System-Prompt aus der Projekt-Konfiguration. Projektname, Ticket-Begriff und
+ * die Feature-Flags entscheiden, worüber der Assistent überhaupt spricht.
+ */
+function buildSystemPrompt(cfg) {
+  const { hasTickets, hasQuality } = cfg.features;
+  const T = cfg.labels.ticket;
+  const lines = [
+    `Du bist der Analyse-Assistent im Lead-Dashboard für "${cfg.name}".`,
+    'Du beantwortest Fragen zu Werbe-Performance' + (hasQuality ? ' und Lead-Qualität' : '') + ' auf Basis der dir gelieferten, bereits aggregierten Kennzahlen.',
+    '',
+    'Regeln:',
+    '- Antworte kurz, präzise und auf Deutsch. Nutze konkrete Zahlen aus dem Kontext.',
+    '- Rechne bei Bedarf abgeleitete Werte (z. B. Verhältnisse) sauber aus den vorhandenen Zahlen.',
+    '- Beträge in Euro mit € und Tausenderpunkt; Raten in Prozent.',
+    '- Wenn eine Zahl nicht im Kontext steht, sag das klar – erfinde nichts.',
+    '- Der Kontext bezieht sich auf den aktuell im Dashboard gewählten Zeitraum/Filter.',
+  ];
+  if (hasTickets) {
+    lines.push(`- Das Feld "tickets" ist die zweite Conversion-Stufe nach dem Lead; im Dashboard heißt sie "${T.many}". Nenne sie genauso.`);
+  } else {
+    lines.push('- Dieses Projekt kennt nur Leads – es gibt keine zweite Conversion-Stufe. Sprich nicht von Tickets, Kosten/Ticket oder Ticket-Raten.');
+  }
+  if (hasQuality) {
+    lines.push('- Lead-Qualität: Tier A/B = qualifiziert. Das Bewertungsmodell steht in der Projekt-Konfiguration (Gewichte je Fragebogen-Dimension).');
+  } else {
+    lines.push('- Dieses Projekt hat kein Lead-Scoring. Es gibt keine Qualitäts-Scores, Tiers oder Fragebogen-Antworten – behaupte nichts dergleichen.');
+  }
+  lines.push(
+    '- Dir liegen auch die einzelnen Leads inkl. Name, E-Mail und Telefon vor (internes Tool). Du darfst daraus konkrete Personen nennen, Listen erstellen (z. B. "alle Leads aus Kampagne X") und Kontaktdaten ausgeben, wenn danach gefragt wird.',
+    "- Das Feld 'leads' enthält ggf. nur die ersten N Datensätze (siehe leads_hinweis); für Gesamtzahlen nutze die Summen/Verdichtungen.",
+    '- Formatiere Vergleiche/Ranglisten/Lead-Listen als kurze Aufzählung oder Tabelle, wenn es hilft.',
+  );
+  return lines.join('\n');
+}
 
 /**
  * Beantwortet eine Chat-Nachricht. messages = [{role, content}], history-fähig.
@@ -129,9 +165,10 @@ export async function chat({ messages, context }) {
     throw new Error('Chatbot nicht konfiguriert (ANTHROPIC_API_KEY fehlt).');
   }
   const client = new Anthropic();
+  const cfg = loadProjectConfig();
 
   const system = [
-    { type: 'text', text: SYSTEM_PROMPT },
+    { type: 'text', text: buildSystemPrompt(cfg) },
     {
       type: 'text',
       // Kontext als eigener Block, gecacht – stabil über die Konversation

@@ -52,9 +52,11 @@ export function applyFilters(leads, f) {
     if (f.creative && l.creative !== f.creative) return false;
     if (f.placement && l.placement !== f.placement) return false;
     if (f.onlyTickets && !l.hasTicket) return false;
-    if (f.employment && l.answers?.employment !== f.employment) return false;
-    if (f.income && l.answers?.income !== f.income) return false;
-    if (f.realEstate && l.answers?.realEstate !== f.realEstate) return false;
+    // Fragebogen-Filter: { <antwortSchlüssel>: <wert> } – welche Schlüssel es
+    // gibt, steht in der Projekt-Konfiguration, nicht hier.
+    for (const [key, val] of Object.entries(f.answers || {})) {
+      if (val && l.answers?.[key] !== val) return false;
+    }
     if (f.tiers && f.tiers.length) {
       const tier = l.quality?.tier;
       const ok = (tier && f.tiers.includes(tier)) || (!tier && f.tiers.includes('none'));
@@ -118,7 +120,7 @@ function spendForAdsets(adsetNames, overviewByAdset) {
  * Anzeigengruppe aus der Sheet-Übersicht (nur Kampagne/Anzeigengruppe).
  */
 export function aggregate(leads, dimKey, overviewByAdset, fb, filters = {}, opts = {}) {
-  const { addFbRows = true } = opts; // FB-only-Zeilen (pausierte/leere Kampagnen) ergänzen?
+  const { addFbRows = true, features = {} } = opts; // FB-only-Zeilen (pausierte/leere Kampagnen) ergänzen?
   const fbDim = addFbRows ? (fb?.byDim?.[dimKey] || null) : null;
   // Tickets werden nach ihrer EIGENEN Herkunft (Ticket-UTM) gezählt, nicht nach
   // der Lead-Zeile – sonst landet ein Ticket in jeder Kampagne, in der die Person
@@ -162,7 +164,7 @@ export function aggregate(leads, dimKey, overviewByAdset, fb, filters = {}, opts
     const clicks = (m ? m.clicks : null) ?? (dm ? dm.clicks : null);
     const uoc = addFbRows ? (fb?.uocByDim?.[dimKey]?.[normKey(g.key)] ?? (dm ? dm.uoc : null)) : null;
 
-    rows.push(makeRow({ key: g.key, total, tickets, avgQuality, qualified, spend, impressions, clicks, uoc, active: dm ? dm.active : null }));
+    rows.push(makeRow({ key: g.key, total, tickets, avgQuality, qualified, spend, impressions, clicks, uoc, active: dm ? dm.active : null }, features));
   }
 
   // Pausierte/aktive FB-Einträge OHNE Leads im Zeitraum ergänzen, damit auch
@@ -177,23 +179,28 @@ export function aggregate(leads, dimKey, overviewByAdset, fb, filters = {}, opts
       if (filters.campaign && meta.parents?.campaign && normKey(meta.parents.campaign) !== normKey(filters.campaign)) continue;
       if (filters.adset && meta.parents?.adset && normKey(meta.parents.adset) !== normKey(filters.adset)) continue;
       const uoc = fb?.uocByDim?.[dimKey]?.[k] ?? meta.uoc ?? null;
-      rows.push(makeRow({ key: meta.name, total: 0, tickets: 0, avgQuality: null, qualified: 0, spend: meta.spend, impressions: meta.impressions, clicks: meta.clicks, uoc, active: meta.active }));
+      rows.push(makeRow({ key: meta.name, total: 0, tickets: 0, avgQuality: null, qualified: 0, spend: meta.spend, impressions: meta.impressions, clicks: meta.clicks, uoc, active: meta.active }, features));
     }
   }
   return rows;
 }
 
-/** Baut eine Ergebniszeile inkl. abgeleiteter Kennzahlen. */
-function makeRow({ key, total, tickets, avgQuality, qualified, spend, impressions, clicks, uoc, active }) {
+/**
+ * Baut eine Ergebniszeile inkl. abgeleiteter Kennzahlen.
+ * features: { hasTickets, hasQuality } – abgeschaltete Kennzahlen werden null,
+ * wodurch die Tabellen die Spalten automatisch weglassen.
+ */
+function makeRow({ key, total, tickets, avgQuality, qualified, spend, impressions, clicks, uoc, active }, features = {}) {
+  const { hasTickets = true, hasQuality = true } = features;
   return {
     key,
     active,
     leads: total,
-    tickets,
-    ticketRate: total ? tickets / total : null,
-    avgQuality,
-    qualified,
-    qualifiedRate: tickets ? qualified / tickets : null,
+    tickets: hasTickets ? tickets : null,
+    ticketRate: hasTickets && total ? tickets / total : null,
+    avgQuality: hasQuality ? avgQuality : null,
+    qualified: hasQuality ? qualified : null,
+    qualifiedRate: hasQuality && tickets ? qualified / tickets : null,
     spend,
     impressions,
     clicks,
@@ -203,24 +210,25 @@ function makeRow({ key, total, tickets, avgQuality, qualified, spend, impression
     cpoc: uoc ? (spend ?? 0) / uoc : null,
     cvrStart: uoc ? total / uoc : null,
     cpl: spend != null && total ? spend / total : null,
-    cpt: spend != null && tickets ? spend / tickets : null,
+    cpt: hasTickets && spend != null && tickets ? spend / tickets : null,
   };
 }
 
-export function computeKpis(leads, overviewByAdset, fb) {
+export function computeKpis(leads, overviewByAdset, fb, features = {}) {
+  const { hasTickets = true, hasQuality = true } = features;
   const total = leads.length;
   const paid = leads.filter((l) => l.sourceType === 'paid');
   const organic = leads.filter((l) => l.sourceType !== 'paid');
 
   // Tickets getrennt nach Quelle
-  const paidTickets = paid.filter((l) => l.hasTicket);
-  const organicTickets = organic.filter((l) => l.hasTicket);
-  const ticketLeads = leads.filter((l) => l.hasTicket);
+  const paidTickets = hasTickets ? paid.filter((l) => l.hasTicket) : [];
+  const organicTickets = hasTickets ? organic.filter((l) => l.hasTicket) : [];
+  const ticketLeads = hasTickets ? leads.filter((l) => l.hasTicket) : [];
 
   // Qualität: über alle bewerteten Tickets (Antworten kommen aus dem Sheet,
   // unabhängig von der Quelle)
-  const scored = ticketLeads.filter((l) => l.quality);
-  const qualified = ticketLeads.filter((l) => ['A', 'B'].includes(l.quality?.tier)).length;
+  const scored = hasQuality ? ticketLeads.filter((l) => l.quality) : [];
+  const qualified = hasQuality ? ticketLeads.filter((l) => ['A', 'B'].includes(l.quality?.tier)).length : 0;
 
   let spend = fb?.totals?.spend ?? null;
   let impressions = fb?.totals?.impressions ?? null;
@@ -237,22 +245,22 @@ export function computeKpis(leads, overviewByAdset, fb) {
     total,
     paid: paid.length,
     organic: organic.length,
-    paidTickets: paidTickets.length,
-    organicTickets: organicTickets.length,
-    paidTicketRate: paid.length ? paidTickets.length / paid.length : null,
-    organicTicketRate: organic.length ? organicTickets.length / organic.length : null,
-    tickets: ticketLeads.length,
-    ticketRate: total ? ticketLeads.length / total : null,
+    paidTickets: hasTickets ? paidTickets.length : null,
+    organicTickets: hasTickets ? organicTickets.length : null,
+    paidTicketRate: hasTickets && paid.length ? paidTickets.length / paid.length : null,
+    organicTicketRate: hasTickets && organic.length ? organicTickets.length / organic.length : null,
+    tickets: hasTickets ? ticketLeads.length : null,
+    ticketRate: hasTickets && total ? ticketLeads.length / total : null,
     avgQuality: scored.length ? Math.round(scored.reduce((s, l) => s + l.quality.score, 0) / scored.length) : null,
-    qualified,
-    qualifiedRate: ticketLeads.length ? qualified / ticketLeads.length : null,
+    qualified: hasQuality ? qualified : null,
+    qualifiedRate: hasQuality && ticketLeads.length ? qualified / ticketLeads.length : null,
     spend,
     leadSpend,
     nonLeadSpend,
     impressions,
     // Denominator = bezahlte Leads/Tickets (nicht alle), da Spend nur Paid ist
     cpl: leadSpend != null && paid.length ? leadSpend / paid.length : null,
-    cpt: leadSpend != null && paidTickets.length ? leadSpend / paidTickets.length : null,
+    cpt: hasTickets && leadSpend != null && paidTickets.length ? leadSpend / paidTickets.length : null,
   };
 }
 

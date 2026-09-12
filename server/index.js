@@ -13,9 +13,11 @@ import { isSupermetricsConfigured, fetchFbInsights, aggregateFb } from './superm
 import { isMetaConfigured, fetchMetaAll } from './meta.js';
 import { combineMetaWithLeads } from './combine.js';
 import { isChatConfigured, buildContext, chat } from './chat.js';
+import { loadProjectConfig, publicProjectConfig } from './project.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
+const PROJECT = loadProjectConfig();
 const PORT = process.env.PORT || 3000;
 // Standard 15 Min: Ansehen/Tab-Wechsel/erneutes Öffnen kommt aus dem Cache und
 // kostet keine Meta-Calls (schont das API-Rate-Limit). Der „Aktualisieren"-
@@ -39,7 +41,7 @@ if (AUTH_USER && AUTH_PASS) {
       const [u, p] = Buffer.from(encoded, 'base64').toString().split(':');
       if (u === AUTH_USER && p === AUTH_PASS) return next();
     }
-    res.set('WWW-Authenticate', 'Basic realm="MMV Dashboard"');
+    res.set('WWW-Authenticate', `Basic realm="${PROJECT.name}"`);
     return res.status(401).send('Authentifizierung erforderlich.');
   });
 }
@@ -54,17 +56,18 @@ async function loadDataset({ refresh = false, from = '', to = '' } = {}) {
     return hit.payload;
   }
   const cfg = loadScoringConfig();
+  const features = PROJECT.features;
   let parsed;
   let source;
   if (isConfigured()) {
     const sheets = await fetchAllSheets();
-    parsed = parseSheets(sheets);
+    parsed = parseSheets(sheets, PROJECT.sheet, features);
     source = 'google';
   } else {
     parsed = getSampleParsed();
     source = 'demo';
   }
-  const dataset = buildDataset(parsed, cfg);
+  const dataset = buildDataset(parsed, cfg, features);
 
   // Facebook-Ads-Daten: bevorzugt direkt über die Meta Marketing API,
   // alternativ über Supermetrics. Fehler hier dürfen das Sheet-Dashboard
@@ -81,7 +84,7 @@ async function loadDataset({ refresh = false, from = '', to = '' } = {}) {
       const leadsInRange = filterLeadsByRange(dataset.leads, from, to);
       // Stunden-Raster, wenn genau ein Tag gewählt ist
       const hourlyDay = from && to && from === to ? from : null;
-      const combined = combineMetaWithLeads(all, leadsInRange, { hourlyDay });
+      const combined = combineMetaWithLeads(all, leadsInRange, { hourlyDay, features });
       fb = { configured: true, provider: 'meta', error: null, fetchedAt: new Date().toISOString(), ...agg, hierarchy: combined.hierarchy, daily: combined.daily, totals: combined.totals, nonLeadCampaigns: combined.nonLeadCampaigns, uocByDim: combined.uocByDim, dimMeta: combined.dimMeta, dailyByEntity: combined.dailyByEntity, intradayByEntity: combined.intradayByEntity, intradayDay: combined.intradayDay, accounts: all.accounts, accountsRequested: all.accountsRequested, accountErrors: all.accountErrors };
     } catch (err) {
       console.error('Meta-Fehler:', err.message);
@@ -102,7 +105,8 @@ async function loadDataset({ refresh = false, from = '', to = '' } = {}) {
     source,
     fetchedAt: new Date().toISOString(),
     range: range || null,
-    scoring: { weights: cfg.weights, tiers: cfg.tiers },
+    project: publicProjectConfig(PROJECT),
+    scoring: features.hasQuality ? { weights: cfg.weights, tiers: cfg.tiers } : { weights: {}, tiers: [] },
     fb,
     ...dataset,
   };
@@ -126,6 +130,12 @@ function filterLeadsByRange(leads, from, to) {
 // --- API --------------------------------------------------------------------
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, configured: isConfigured(), mode: isConfigured() ? 'google' : 'demo' });
+});
+
+// Projekt-Konfiguration (Branding/Flags) – das Frontend holt sie vor den Daten,
+// damit Farbe, Logo und Titel sofort stimmen.
+app.get('/api/config', (req, res) => {
+  res.json(publicProjectConfig(PROJECT));
 });
 
 app.get('/api/data', async (req, res) => {
@@ -202,7 +212,7 @@ app.post('/api/chat', async (req, res) => {
     const isYmd = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
     const payload = await loadDataset({ from: isYmd(from) ? from : '', to: isYmd(to) ? to : '' });
     const leadsInRange = filterLeadsByRange(payload.leads, isYmd(from) ? from : '', isYmd(to) ? to : '');
-    const context = buildContext(payload, leadsInRange);
+    const context = buildContext(payload, leadsInRange, PROJECT.features);
     const answer = await chat({ messages: messages.slice(-12), context });
     res.json({ answer });
   } catch (err) {
@@ -220,12 +230,13 @@ if (fs.existsSync(distDir)) {
   app.get('/', (req, res) =>
     res
       .type('html')
-      .send('<h1>MMV Dashboard – API läuft</h1><p>Frontend noch nicht gebaut. Im Dev: <code>npm run dev</code> und <a href="http://localhost:5173">localhost:5173</a> öffnen. Für Production: <code>npm run serve</code>.</p>')
+      .send(`<h1>${PROJECT.name} – API läuft</h1><p>Frontend noch nicht gebaut. Im Dev: <code>npm run dev</code> und <a href="http://localhost:5173">localhost:5173</a> öffnen. Für Production: <code>npm run serve</code>.</p>`)
   );
 }
 
 app.listen(PORT, () => {
   const mode = isConfigured() ? 'Google Sheets (live)' : 'DEMO (synthetische Daten)';
-  console.log(`\n  MMV Dashboard-Server läuft auf  http://localhost:${PORT}`);
-  console.log(`  Datenquelle: ${mode}\n`);
+  console.log(`\n  ${PROJECT.name} – Server läuft auf  http://localhost:${PORT}`);
+  console.log(`  Datenquelle: ${mode}`);
+  console.log(`  Features: Tickets ${PROJECT.features.hasTickets ? 'an' : 'aus'} · Lead-Qualität ${PROJECT.features.hasQuality ? 'an' : 'aus'}\n`);
 });

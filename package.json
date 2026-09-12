@@ -1,9 +1,9 @@
 {
-  "name": "mmv-fuatmarta-dashboard",
+  "name": "workshop-lead-dashboard",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Lead- & VIP-Ticket-Dashboard für den Fuat & Marta MoneyMaker-Workshop. Liest live aus dem Google Tracking Sheet und wertet Leads nach Kampagne, Anzeigengruppe, Creative, Placement und Lead-Qualität aus.",
+  "description": "Wiederverwendbares Lead- & Kampagnen-Dashboard für Workshops/Funnels. Liest live aus einem Google Tracking Sheet und der Meta Marketing API und wertet Leads nach Kampagne, Anzeigengruppe, Creative und Placement aus. Projektspezifisches steht in config/project.config.json – siehe TEMPLATE.md.",
   "engines": {
     "node": ">=18.17"
   },
@@ -14,7 +14,7 @@
     "build": "vite build",
     "start": "node server/index.js",
     "serve": "npm run build && npm run start",
-    "test": "node server/parser.test.mjs && node server/supermetrics.test.mjs && node server/meta.test.mjs && node server/combine.test.mjs"
+    "test": "node server/parser.test.mjs && node server/supermetrics.test.mjs && node server/meta.test.mjs && node server/combine.test.mjs && node server/features.test.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",

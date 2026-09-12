@@ -125,7 +125,7 @@ Die Schlüssel unter `sheet.answers` verbinden Sheet und Bewertungsmodell:
 - Zusätzliche Frage → neuen Schlüssel ergänzen (`label`, `columns`, optional
   `filter: true` für einen Dropdown-Filter, `wide: true` für Freitext).
 - Anderes Bewertungsmodell → `config/scoring.json` anpassen (Gewichte, Stufen,
-  Tiers, Haushaltsregel). Der Code bleibt gleich.
+  harte Regeln, Tiers). Der Code bleibt gleich.
 
 Nur die Dimensionen unter `weights` fließen in den Score ein; fehlt eine
 Antwort, wird auf die vorhandenen Gewichte renormiert. Es gibt zwei Arten von
@@ -149,6 +149,30 @@ Dimensionen:
   "default": 0.4
 }
 ```
+
+**Harte Geschäftsregeln** stehen daneben in `rules` auf oberster Ebene und
+schlagen die Gewichtung – für Vorgaben, die keine Punktemischung kennen
+(„Rentner ist immer D"). Die erste passende Regel gewinnt:
+
+```jsonc
+"rules": [
+  {
+    "label": "Disqualifiziert: kein planbares Einkommen oder über 60",
+    "any": [
+      { "dim": "employment", "matchAny": ["rentner", "schüler", "arbeitssuchend"] },
+      { "dim": "age", "matchAny": ["über 60"] }
+    ],
+    "setScore": 15
+  }
+]
+```
+
+`any` = eine Bedingung reicht, `all` = alle müssen passen. `setScore` erzwingt
+einen Wert, `minScore`/`maxScore` heben bzw. deckeln. Eine `setScore`-Regel
+greift auch dann, wenn sich mangels Antworten gar kein Score berechnen ließ –
+ein Disqualifikations-Merkmal reicht für ein Urteil. Gibt es weder eine
+passende Regel noch eine bewertbare Antwort, bleibt die Qualität leer, statt
+eine Note zu erfinden.
 
 ### Logo
 

@@ -99,6 +99,39 @@ function clamp01(n) {
   return Math.max(0, Math.min(1, n));
 }
 
+/** Prüft eine einzelne Bedingung ({ dim, match } bzw. { dim, matchAny }) gegen die Antworten. */
+function matchCondition(answers, cond) {
+  const val = String(answers?.[cond.dim] ?? '').toLowerCase().trim();
+  if (!val) return false;
+  const needles = cond.matchAny || (cond.match != null ? [cond.match] : []);
+  return needles.some((m) => val.includes(String(m).toLowerCase()));
+}
+
+/**
+ * Harte Regeln über dem rechnerischen Score – für Geschäftsregeln, die keine
+ * Gewichtung kennen ("Rentner ist immer D", "über 3.000 € ist immer A").
+ * Jede Regel in cfg.rules:
+ *   { label, any: [...], all: [...], setScore | minScore | maxScore }
+ * 'any' = mindestens eine Bedingung trifft, 'all' = alle. Die erste passende
+ * Regel gewinnt. setScore erzwingt einen Wert, min/maxScore heben bzw. deckeln.
+ * Regeln greifen auch, wenn sich (mangels Antworten) gar kein Score berechnen
+ * ließ – ein Disqualifikations-Merkmal reicht für ein Urteil.
+ */
+function applyRules(answers, cfg, score) {
+  for (const rule of cfg.rules || []) {
+    const any = rule.any || [];
+    const all = rule.all || [];
+    if (any.length && !any.some((c) => matchCondition(answers, c))) continue;
+    if (all.length && !all.every((c) => matchCondition(answers, c))) continue;
+    if (!any.length && !all.length) continue;
+    if (rule.setScore != null) return { score: rule.setScore, rule: rule.label || null };
+    if (score == null) continue; // min/max brauchen einen Ausgangswert
+    if (rule.maxScore != null && score > rule.maxScore) return { score: rule.maxScore, rule: rule.label || null };
+    if (rule.minScore != null && score < rule.minScore) return { score: rule.minScore, rule: rule.label || null };
+  }
+  return null;
+}
+
 function tierFor(score, cfg) {
   if (score == null) return null;
   const tiers = [...cfg.tiers].sort((a, b) => b.min - a.min);
@@ -137,22 +170,20 @@ export function computeQuality(answers, cfg) {
       sumW += w;
     }
   }
-  if (sumW === 0) return null;
-  let score = Math.round((sum / sumW) * 100);
+  let score = sumW === 0 ? null : Math.round((sum / sumW) * 100);
   let capped = false;
+  let appliedRule = null;
 
-  // Harte Haushaltsregel: niedriges Einkommen + Partner-Haushalt => Bad Quality.
-  const hr = cfg.householdRule;
-  if (hr?.enabled) {
-    const mid = incomeMid(answers.income);
-    const rel = String(answers.relationship || '').toLowerCase();
-    const hasPartner = (hr.relationships || []).some((r) => rel.includes(String(r).toLowerCase()));
-    if (mid != null && mid < hr.incomeBelow && hasPartner) {
-      score = Math.min(score, hr.cappedScore ?? 20);
-      capped = true;
-    }
+  // Harte Geschäftsregeln (config: rules) – schlagen die Gewichtung.
+  const forced = applyRules(answers, cfg, score);
+  if (forced) {
+    score = forced.score;
+    appliedRule = forced.rule;
+    capped = true;
   }
 
+  if (score == null) return null;
+
   const tier = tierFor(score, cfg);
-  return { score, tier: tier?.key ?? null, tierLabel: tier?.label ?? null, breakdown, capped };
+  return { score, tier: tier?.key ?? null, tierLabel: tier?.label ?? null, breakdown, capped, rule: appliedRule };
 }

@@ -33,7 +33,7 @@ const umfrageSheet = {
     ['0', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
     ['2026-09-11 22:42:45', 'Roman', 'Huber', 'roman@example.com', '41796000000', 'Angestellt', '40-49 Jahre', 'Allem gerecht werden', 'In den nächsten Wochen', '2.000 - 2.999 €', 'Ich möchte weiterkommen', 'meta', 'paid', 'JP | RML 14. & 15.10. | WARM UP | CBO | 101026', 'JP | Broad | CH | 30+', 'Video Hook A'],
     // Leitregel: über 3.000 € = A-Lead, auch wenn alle anderen Antworten schwach sind
-    ['2026-09-12 09:35:00', 'Beat', 'Keller', 'beat@example.com', '41790000000', 'Arbeitssuchend', '50-59 Jahre', 'Keine Struktur', 'Irgendwann', '3.000 - 3.999 €', 'Mal reinschauen', 'meta', 'paid', 'JP | RML 14. & 15.10. | WARM UP | CBO | 101026', 'JP | Broad | CH | 30+', 'Static 2'],
+    ['2026-09-12 09:35:00', 'Beat', 'Keller', 'beat@example.com', '41790000000', 'Angestellt', '50-59 Jahre', 'Keine Struktur', 'Irgendwann', '3.000 - 3.999 €', 'Mal reinschauen', 'meta', 'paid', 'JP | RML 14. & 15.10. | WARM UP | CBO | 101026', 'JP | Broad | CH | 30+', 'Static 2'],
   ],
 };
 
@@ -79,28 +79,51 @@ assert.equal(anna.creative, 'Static 2', 'zweites Creative getrennt attribuiert')
 const orga = ds.leads.find((l) => l.email === 'orga@example.com');
 assert.equal(orga.sourceType, 'organic', 'ManyChat -> organisch');
 
-// --- Scoring: Einkommen + Dringlichkeit + Beruf ----------------------------
+// --- Einstufung: die festgelegten Geschäftsregeln --------------------------
+// Roman: 2.000–2.999 € -> C, obwohl die Dringlichkeit hoch ist.
 const q = roman.quality;
 assert.ok(q, 'Qualität berechnet');
 assert.equal(q.breakdown.income, 45, 'Einkommen 2.000–2.999 € -> Stufe 0.45');
-assert.equal(q.breakdown.urgency, 90, 'Dringlichkeit "In den nächsten Wochen" -> 0.9');
-assert.equal(q.breakdown.employment, 70, 'Berufsbezeichnung "Angestellt" -> 0.7');
-const w = scoring.weights;
-const expected = Math.round((0.45 * w.income + 0.9 * w.urgency + 0.7 * w.employment) * 100);
-assert.equal(q.score, expected, `Gesamtscore = gewichtetes Mittel (${expected})`);
+assert.equal(q.tier, 'C', '2.000–2.999 € = C-Lead');
 
-// --- LEITREGEL: über 3.000 € Einkommen ist immer A ------------------------
-// Beat hat die schwächsten Antworten außer beim Einkommen – trotzdem A.
+// Beat: 3.000–3.999 €, sonst schwache Antworten -> trotzdem A.
 const beat = ds.leads.find((l) => l.email === 'beat@example.com');
 assert.equal(beat.hasTicket, true);
 assert.equal(beat.quality.breakdown.income, 100, 'Einkommen 3.000–3.999 € -> volle Stufe');
 assert.equal(beat.quality.tier, 'A', 'über 3.000 € = A-Lead, unabhängig von den übrigen Antworten');
-assert.ok(beat.quality.score >= 75, 'Score über der A-Schwelle');
 
-// Gegenprobe: unter 3.000 € darf auch mit Bestwerten überall nicht A werden
-const bestUnder3k = computeQuality({ income: '2.000 - 2.999 €', urgency: 'Sofort', employment: 'Unternehmer' }, scoring);
-assert.notEqual(bestUnder3k.tier, 'A', 'unter 3.000 € kein A-Lead');
+// Vollständige Matrix der echten Antwortoptionen gegen die Vorgabe:
+//   über 3.000 €      -> A
+//   2.000 - 2.999 €   -> C
+//   unter 2.000 € ODER Rentner/Schüler/Arbeitssuchend ODER über 60 -> D
+const tierOf = (answers) => computeQuality(answers, scoring)?.tier ?? null;
+const INCOMES = ['Unter 1.999 €', '2.000 - 2.999 €', '3.000 - 3.999 €', '4.000 - 4.999 €', 'Über 5.000 €'];
+const EXPECTED_BY_INCOME = { 'Unter 1.999 €': 'D', '2.000 - 2.999 €': 'C', '3.000 - 3.999 €': 'A', '4.000 - 4.999 €': 'A', 'Über 5.000 €': 'A' };
+for (const income of INCOMES) {
+  for (const employment of ['Angestellt', 'Selbstständig / Unternehmer']) {
+    for (const age of ['18-29 Jahre', '30-39 Jahre', '40-49 Jahre', '50-59 Jahre']) {
+      assert.equal(
+        tierOf({ income, employment, age, urgency: 'In den nächsten Wochen' }),
+        EXPECTED_BY_INCOME[income],
+        `${income} / ${employment} / ${age} -> ${EXPECTED_BY_INCOME[income]}`
+      );
+    }
+  }
+}
+
+// Disqualifikation schlägt jedes Einkommen
+for (const income of INCOMES) {
+  for (const employment of ['Rentner', 'Schüler/Student', 'Arbeitssuchend']) {
+    assert.equal(tierOf({ income, employment, age: '40-49 Jahre' }), 'D', `${employment} -> immer D`);
+  }
+  assert.equal(tierOf({ income, employment: 'Angestellt', age: 'Über 60 Jahre' }), 'D', 'über 60 -> immer D');
+}
+
+// Disqualifikation greift auch ohne Einkommens-Angabe
+assert.equal(tierOf({ employment: 'Rentner' }), 'D', 'Rentner ohne Einkommens-Angabe -> D');
+// Ohne jede bewertbare Antwort gibt es kein Urteil (statt einer erfundenen Note)
+assert.equal(computeQuality({ challenge: 'Keine Struktur' }, scoring), null, 'ohne Einkommen keine Note');
 
 console.log('✓ Projekt-Konfiguration passt zum Sheet');
 console.log(`  ${PROJECT.name} | Ticket-Begriff: ${PROJECT.labels.ticket.many} | Leads: ${ds.counts.leads}, Tickets: ${ds.counts.tickets}`);
-console.log(`  Scoring: 2.000–2.999 € -> ${q.score} (${q.tier}) · 3.000–3.999 € -> ${beat.quality.score} (${beat.quality.tier})`);
+console.log(`  Einstufung: 2.000–2.999 € -> ${q.tier} · 3.000–3.999 € -> ${beat.quality.tier} · Rentner/Ü60 -> D (alle Kombinationen geprüft)`);

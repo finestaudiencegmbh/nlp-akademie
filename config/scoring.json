@@ -1,36 +1,39 @@
 {
-  "_comment": "Bewertungsmodell für die Lead-Qualität des Result-Maker-Workshops. Bewertet werden die Antworten aus dem Umfrage-Tab. Nur Dimensionen, die unter 'weights' stehen, fließen in den Score ein – alle anderen Antworten werden nur angezeigt und exportiert. Fehlt eine Antwort, wird der Score auf die vorhandenen Gewichte renormiert (fehlende Angaben ziehen also nicht nach unten). Geändert wird hier – nicht im Code. Nach dem Speichern im Dashboard auf 'Aktualisieren' klicken.",
+  "_comment": "Bewertungsmodell für die Lead-Qualität des Result-Maker-Workshops. Bewertet werden die Antworten aus dem Tab 'Online-Workshop … Umfrage'. Geändert wird hier – nicht im Code. Nach dem Speichern im Dashboard auf 'Aktualisieren' klicken.",
 
-  "_comment_hauptregel": "LEITREGEL: Einkommen über 3.000 € = A-Lead. Umgesetzt über das Gewicht (income 0.8) plus die Einkommensstufe 1.0 ab 3.000 €: 0.8 * 100 = 80 Punkte, und die A-Grenze liegt bei 75 – ein Lead über 3.000 € kann also durch KEINE andere Antwort unter A fallen. Unter 3.000 € ist B das Maximum. Dringlichkeit und Berufsbezeichnung feilen nur noch innerhalb dieser Grenzen (Fine-Tuning später: Gewichte hier anheben).",
+  "_comment_logik": "Die Einstufung folgt den festgelegten Geschäftsregeln, nicht einer Punkte-Mischung: (1) Disqualifikation -> D, (2) über 3.000 € -> A, (3) 2.000–2.999 € -> C, (4) unter 2.000 € -> D. Umgesetzt ist das über die Einkommensstufen (income = einziges Gewicht) plus die harten Regeln unter 'rules'. Dringlichkeit und Berufsbezeichnung werden weiterhin berechnet und im Lead-Detail angezeigt, fließen aber mit Gewicht 0 NICHT in die Note ein – fürs spätere Fine-Tuning einfach ein Gewicht setzen.",
 
-  "_comment_annahme": "Die Regeln für 'urgency' sind anhand der bisherigen Testzeile im Sheet ('In den nächsten Wochen') gesetzt. Sobald die echten Antwortoptionen der Umfrage feststehen, hier gegenprüfen – nicht getroffene Antworten fallen auf 'default' (0.4) und beeinflussen den Score damit kaum. Sonderfall: Fehlt die Einkommens-Angabe komplett, entscheiden Dringlichkeit und Beruf allein (der Score wird auf die vorhandenen Gewichte renormiert).",
+  "_comment_offen": "Die Stufe B wird mit diesen Regeln nie vergeben (Scores sind 100 / 45 / 15). Kandidat fürs Fine-Tuning: 2.000–2.999 € in Kombination mit 'Selbstständig / Unternehmer' oder hoher Dringlichkeit auf B heben – dafür unter 'rules' eine Regel mit minScore 55 ergänzen.",
 
   "weights": {
-    "income": 0.8,
-    "urgency": 0.14,
-    "employment": 0.06
+    "income": 1.0,
+    "urgency": 0,
+    "employment": 0
   },
 
-  "householdRule": {
-    "_comment": "Aus – die Umfrage fragt keinen Beziehungsstand/Haushalt ab. Zum Reaktivieren: enabled true und 'relationship' als Antwort-Schlüssel in project.config.json anlegen.",
-    "enabled": false,
-    "incomeBelow": 3500,
-    "relationships": [],
-    "cappedScore": 20
-  },
+  "_comment_rules": "Harte Geschäftsregeln, der Reihe nach geprüft; die erste passende gewinnt und schlägt den gerechneten Score. 'any' = eine Bedingung reicht, 'all' = alle müssen passen. match/matchAny wird case-insensitiv als Teilstring gegen die Antwort geprüft. setScore erzwingt, minScore/maxScore heben bzw. deckeln.",
+  "rules": [
+    {
+      "label": "Disqualifiziert: kein planbares Einkommen oder über 60",
+      "any": [
+        { "dim": "employment", "matchAny": ["rentner", "schüler", "student", "arbeitssuchend", "arbeitslos"] },
+        { "dim": "age", "matchAny": ["über 60", "ueber 60", "60+"] }
+      ],
+      "setScore": 15
+    }
+  ],
 
   "income": {
-    "_comment": "Monatliches Einkommen (Spalte J der Umfrage) als Stufen (0..1). Aus der Antwort wird der Mittelwert der Spanne gebildet ('3.000 - 3.999 €' -> 3.500, '2.000 - 2.999 €' -> 2.500) und der ersten passenden Stufe zugeordnet (atLeast = untere Grenze). 'unter X' und 'ab X' werden ebenfalls erkannt. Die Grenze 3000 liegt bewusst ZWISCHEN den Mittelwerten der Bänder 2.000–2.999 und 3.000–3.999 – damit trennt sie die Antwortoptionen sauber.",
+    "_comment": "Netto-Einkommen (Spalte J der Umfrage). Antwortoptionen: 'Unter 1.999 €', '2.000 - 2.999 €', '3.000 - 3.999 €', '4.000 - 4.999 €', 'Über 5.000 €'. Aus der Antwort wird der Mittelwert der Spanne gebildet ('3.000 - 3.999 €' -> 3.500); 'Unter X' und 'Über X' werden erkannt. Die Stufenwerte sind so gesetzt, dass sie direkt auf die Tiers fallen: 1.0 -> 100 = A, 0.45 -> 45 = C, 0.1 -> 10 = D.",
     "tiers": [
       { "atLeast": 3000, "score": 1.0 },
       { "atLeast": 2000, "score": 0.45 },
-      { "atLeast": 1000, "score": 0.25 },
       { "atLeast": 0, "score": 0.1 }
     ]
   },
 
   "urgency": {
-    "_comment": "Dringlichkeit der Lösung – der stärkste Kaufindikator für einen Workshop. Regeln werden von oben nach unten als Teilstring geprüft (case-insensitiv), die erste passende gewinnt. 'default' greift, wenn keine Regel passt.",
+    "_comment": "Dringlichkeit der Lösung. Aktuell Gewicht 0 – wird berechnet und im Lead-Detail angezeigt, entscheidet aber nicht über die Note. Regeln werden von oben nach unten als Teilstring geprüft (case-insensitiv), die erste passende gewinnt.",
     "rules": [
       { "match": "sofort", "score": 1.0 },
       { "match": "so schnell wie möglich", "score": 1.0 },
@@ -47,26 +50,18 @@
   },
 
   "employment": {
-    "_comment": "Berufsbezeichnung. Schlüssel werden case-insensitiv als Teilstring geprüft. 'default' greift bei unbekannten Freitext-Angaben.",
+    "_comment": "Berufsbezeichnung. Antwortoptionen: 'Angestellt', 'Selbstständig / Unternehmer', 'Rentner', 'Schüler/Student', 'Arbeitssuchend'. Aktuell Gewicht 0 – die drei letzten Optionen wirken stattdessen als Disqualifikation über 'rules'. Schlüssel werden case-insensitiv als Teilstring geprüft, der erste Treffer gewinnt.",
     "scores": {
       "unternehmer": 1.0,
-      "geschäftsführer": 1.0,
-      "selbststaendig": 0.9,
       "selbstständig": 0.9,
+      "selbststaendig": 0.9,
       "selbständig": 0.9,
-      "freiberuf": 0.85,
-      "führungskraft": 0.85,
       "angestellt": 0.7,
-      "beamtin": 0.65,
-      "beamter": 0.65,
-      "in elternzeit": 0.45,
-      "elternzeit": 0.45,
-      "student": 0.35,
-      "studentin": 0.35,
-      "rentner": 0.35,
-      "rentnerin": 0.35,
-      "arbeitssuchend": 0.2,
-      "arbeitslos": 0.2
+      "rentner": 0.2,
+      "schüler": 0.15,
+      "student": 0.15,
+      "arbeitssuchend": 0.1,
+      "arbeitslos": 0.1
     },
     "default": 0.5
   },

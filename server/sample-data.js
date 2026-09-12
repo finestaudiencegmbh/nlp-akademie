@@ -28,10 +28,10 @@ const placements = ['Instagram_Feed', 'Facebook_Mobile_Feed', 'Instagram_Reels',
 
 /** Antwort-Pools je bekanntem Fragebogen-Schlüssel (nur für die Demo). */
 const ANSWER_POOLS = {
-  income: ['unter 1.000 €', '1.000 - 1.999 €', '2.000 - 2.999 €', '3.000 - 3.999 €', '4.000 - 4.999 €', 'ab 5.000 €'],
+  income: ['Unter 1.999 €', '2.000 - 2.999 €', '3.000 - 3.999 €', '4.000 - 4.999 €', 'Über 5.000 €'],
   urgency: ['Sofort', 'In den nächsten Wochen', 'In den nächsten Monaten', 'Innerhalb eines Jahres', 'Irgendwann'],
-  employment: ['Angestellt', 'Selbstständig', 'Unternehmer', 'In Elternzeit', 'Student'],
-  age: ['20-29 Jahre', '30-39 Jahre', '40-49 Jahre', '50-59 Jahre', '60+ Jahre'],
+  employment: ['Angestellt', 'Selbstständig / Unternehmer', 'Rentner', 'Schüler/Student', 'Arbeitssuchend'],
+  age: ['18-29 Jahre', '30-39 Jahre', '40-49 Jahre', '50-59 Jahre', 'Über 60 Jahre'],
   challenge: ['Zu wenig Zeit', 'Allem gerecht werden', 'Fehlende Struktur', 'Unklare Ziele'],
   expectation: ['Klarer Plan', 'Ich möchte weiterkommen', 'Konkrete Werkzeuge'],
   realEstate: ['Nein', 'Ja, eine', 'Ja, mehrere', 'Noch nicht'],

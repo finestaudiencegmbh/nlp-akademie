@@ -143,8 +143,8 @@ Placement-Ebene liefert ihn die Facebook-Anbindung (Phase 2).
 
 Das Bewertungsmodell steht in [`config/scoring.json`](config/scoring.json), die
 Zuordnung der Fragebogen-Spalten in `config/project.config.json` unter
-`sheet.answers` – **kein Code nötig**. Du kannst Gewichte, Einkommens-Skalierung und die
-Tier-Grenzen (A–D) frei ändern. Nach dem Speichern im Dashboard **↻ Aktualisieren**.
+`sheet.answers` – **kein Code nötig**. Du kannst Gewichte, Einkommens-Stufen, harte
+Geschäftsregeln und die Tier-Grenzen (A–D) frei ändern. Nach dem Speichern im Dashboard **↻ Aktualisieren**.
 
 Standardgewichtung: Einkommen 40 %, investiertes Kapital 25 %,
 Immobilienbesitz 20 %, Beschäftigung 15 %. Fehlende Antworten werden fair

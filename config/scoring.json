@@ -1,9 +1,7 @@
 {
   "_comment": "Bewertungsmodell für die Lead-Qualität des Result-Maker-Workshops. Bewertet werden die Antworten aus dem Tab 'Online-Workshop … Umfrage'. Geändert wird hier – nicht im Code. Nach dem Speichern im Dashboard auf 'Aktualisieren' klicken.",
 
-  "_comment_logik": "Die Einstufung folgt den festgelegten Geschäftsregeln, nicht einer Punkte-Mischung: (1) Disqualifikation -> D, (2) über 3.000 € -> A, (3) 2.000–2.999 € -> C, (4) unter 2.000 € -> D. Umgesetzt ist das über die Einkommensstufen (income = einziges Gewicht) plus die harten Regeln unter 'rules'. Dringlichkeit und Berufsbezeichnung werden weiterhin berechnet und im Lead-Detail angezeigt, fließen aber mit Gewicht 0 NICHT in die Note ein – fürs spätere Fine-Tuning einfach ein Gewicht setzen.",
-
-  "_comment_offen": "Die Stufe B wird mit diesen Regeln nie vergeben (Scores sind 100 / 45 / 15). Kandidat fürs Fine-Tuning: 2.000–2.999 € in Kombination mit 'Selbstständig / Unternehmer' oder hoher Dringlichkeit auf B heben – dafür unter 'rules' eine Regel mit minScore 55 ergänzen.",
+  "_comment_logik": "Die Einstufung folgt festen Geschäftsregeln, nicht einer Punkte-Mischung. Reihenfolge der Prüfung: (1) Disqualifikation (Rentner/Schüler/Arbeitssuchend/über 60) -> D. (2) Mittelfeld 2.000–2.999 € MIT Kaufsignal (hohe Dringlichkeit ODER selbstständig) -> B. (3) sonst entscheidet das Einkommen: über 3.000 € -> A, 2.000–2.999 € -> C, darunter -> D. Umgesetzt über die Einkommensstufen (income = einziges Gewicht) plus die harten Regeln unter 'rules'. Dringlichkeit und Berufsbezeichnung fließen mit Gewicht 0 nicht in den gerechneten Score ein, wirken aber über die Regeln – so bleibt die Einstufung nachvollziehbar statt vermischt.",
 
   "weights": {
     "income": 1.0,
@@ -20,6 +18,22 @@
         { "dim": "age", "matchAny": ["über 60", "ueber 60", "60+"] }
       ],
       "setScore": 15
+    },
+    {
+      "label": "Mittelfeld mit Kaufsignal: hohe Dringlichkeit",
+      "all": [
+        { "dim": "income", "atLeast": 2000, "below": 3000 },
+        { "dim": "urgency", "matchAny": ["sofort", "so schnell wie möglich", "nächsten wochen", "woche"] }
+      ],
+      "setScore": 60
+    },
+    {
+      "label": "Mittelfeld mit Kaufsignal: selbstständig oder Unternehmer",
+      "all": [
+        { "dim": "income", "atLeast": 2000, "below": 3000 },
+        { "dim": "employment", "matchAny": ["selbstständig", "selbststaendig", "selbständig", "unternehmer"] }
+      ],
+      "setScore": 60
     }
   ],
 

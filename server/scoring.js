@@ -99,12 +99,26 @@ function clamp01(n) {
   return Math.max(0, Math.min(1, n));
 }
 
-/** Prüft eine einzelne Bedingung ({ dim, match } bzw. { dim, matchAny }) gegen die Antworten. */
+/**
+ * Prüft eine einzelne Bedingung gegen die Antworten. Zwei Formen:
+ *   Text:  { dim, match: "…" } oder { dim, matchAny: ["…", "…"] }
+ *   Zahl:  { dim, atLeast: 2000, below: 3000 } – der Betrag wird aus der
+ *          Antwort geparst ("2.000 - 2.999 €" -> 2.500, "Über 5.000 €" -> 6.250).
+ *          Robuster als Textvergleich, wenn sich die Beschriftung ändert.
+ */
 function matchCondition(answers, cond) {
-  const val = String(answers?.[cond.dim] ?? '').toLowerCase().trim();
+  const val = String(answers?.[cond.dim] ?? '').trim();
   if (!val) return false;
+  if (cond.atLeast != null || cond.below != null) {
+    const n = incomeMid(val);
+    if (n == null) return false;
+    if (cond.atLeast != null && n < cond.atLeast) return false;
+    if (cond.below != null && n >= cond.below) return false;
+    return true;
+  }
   const needles = cond.matchAny || (cond.match != null ? [cond.match] : []);
-  return needles.some((m) => val.includes(String(m).toLowerCase()));
+  const lower = val.toLowerCase();
+  return needles.some((m) => lower.includes(String(m).toLowerCase()));
 }
 
 /**

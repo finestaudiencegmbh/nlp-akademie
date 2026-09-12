@@ -84,7 +84,7 @@ assert.equal(orga.sourceType, 'organic', 'ManyChat -> organisch');
 const q = roman.quality;
 assert.ok(q, 'Qualität berechnet');
 assert.equal(q.breakdown.income, 45, 'Einkommen 2.000–2.999 € -> Stufe 0.45');
-assert.equal(q.tier, 'C', '2.000–2.999 € = C-Lead');
+assert.equal(q.tier, 'B', '2.000–2.999 € + hohe Dringlichkeit = B-Lead');
 
 // Beat: 3.000–3.999 €, sonst schwache Antworten -> trotzdem A.
 const beat = ds.leads.find((l) => l.email === 'beat@example.com');
@@ -93,30 +93,46 @@ assert.equal(beat.quality.breakdown.income, 100, 'Einkommen 3.000–3.999 € ->
 assert.equal(beat.quality.tier, 'A', 'über 3.000 € = A-Lead, unabhängig von den übrigen Antworten');
 
 // Vollständige Matrix der echten Antwortoptionen gegen die Vorgabe:
-//   über 3.000 €      -> A
-//   2.000 - 2.999 €   -> C
-//   unter 2.000 € ODER Rentner/Schüler/Arbeitssuchend ODER über 60 -> D
+//   über 3.000 €                                   -> A
+//   2.000 - 2.999 € mit Kaufsignal (dringend ODER
+//     selbstständig)                                -> B
+//   2.000 - 2.999 € ohne Kaufsignal                 -> C
+//   unter 2.000 €                                   -> D
+//   Rentner/Schüler/Arbeitssuchend/über 60          -> D (schlägt alles)
 const tierOf = (answers) => computeQuality(answers, scoring)?.tier ?? null;
 const INCOMES = ['Unter 1.999 €', '2.000 - 2.999 €', '3.000 - 3.999 €', '4.000 - 4.999 €', 'Über 5.000 €'];
-const EXPECTED_BY_INCOME = { 'Unter 1.999 €': 'D', '2.000 - 2.999 €': 'C', '3.000 - 3.999 €': 'A', '4.000 - 4.999 €': 'A', 'Über 5.000 €': 'A' };
+const URGENCIES = ['Sofort', 'In den nächsten Wochen', 'In den nächsten Monaten', 'Irgendwann'];
+const DRINGEND = ['Sofort', 'In den nächsten Wochen'];
+const MITTELFELD = '2.000 - 2.999 €';
+
+const expectedTier = (income, employment, urgency) => {
+  if (income === MITTELFELD) {
+    return DRINGEND.includes(urgency) || employment.toLowerCase().includes('selbstständig') ? 'B' : 'C';
+  }
+  return income === 'Unter 1.999 €' ? 'D' : 'A';
+};
+
 for (const income of INCOMES) {
   for (const employment of ['Angestellt', 'Selbstständig / Unternehmer']) {
-    for (const age of ['18-29 Jahre', '30-39 Jahre', '40-49 Jahre', '50-59 Jahre']) {
-      assert.equal(
-        tierOf({ income, employment, age, urgency: 'In den nächsten Wochen' }),
-        EXPECTED_BY_INCOME[income],
-        `${income} / ${employment} / ${age} -> ${EXPECTED_BY_INCOME[income]}`
-      );
+    for (const urgency of URGENCIES) {
+      for (const age of ['18-29 Jahre', '30-39 Jahre', '40-49 Jahre', '50-59 Jahre']) {
+        const want = expectedTier(income, employment, urgency);
+        assert.equal(
+          tierOf({ income, employment, age, urgency }),
+          want,
+          `${income} / ${employment} / ${urgency} / ${age} -> ${want}`
+        );
+      }
     }
   }
 }
 
-// Disqualifikation schlägt jedes Einkommen
+// Disqualifikation schlägt jedes Einkommen und jedes Kaufsignal
 for (const income of INCOMES) {
   for (const employment of ['Rentner', 'Schüler/Student', 'Arbeitssuchend']) {
-    assert.equal(tierOf({ income, employment, age: '40-49 Jahre' }), 'D', `${employment} -> immer D`);
+    assert.equal(tierOf({ income, employment, age: '40-49 Jahre', urgency: 'Sofort' }), 'D', `${employment} -> immer D`);
   }
-  assert.equal(tierOf({ income, employment: 'Angestellt', age: 'Über 60 Jahre' }), 'D', 'über 60 -> immer D');
+  assert.equal(tierOf({ income, employment: 'Selbstständig / Unternehmer', age: 'Über 60 Jahre', urgency: 'Sofort' }), 'D', 'über 60 -> immer D');
 }
 
 // Disqualifikation greift auch ohne Einkommens-Angabe
@@ -126,4 +142,5 @@ assert.equal(computeQuality({ challenge: 'Keine Struktur' }, scoring), null, 'oh
 
 console.log('✓ Projekt-Konfiguration passt zum Sheet');
 console.log(`  ${PROJECT.name} | Ticket-Begriff: ${PROJECT.labels.ticket.many} | Leads: ${ds.counts.leads}, Tickets: ${ds.counts.tickets}`);
-console.log(`  Einstufung: 2.000–2.999 € -> ${q.tier} · 3.000–3.999 € -> ${beat.quality.tier} · Rentner/Ü60 -> D (alle Kombinationen geprüft)`);
+console.log('  Einstufung: über 3.000 € -> A · Mittelfeld mit Kaufsignal -> B · Mittelfeld ohne -> C · unter 2.000 €/Rentner/Ü60 -> D');
+console.log('  (alle Kombinationen aus Einkommen x Beruf x Dringlichkeit x Alter geprüft)');

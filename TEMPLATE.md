@@ -168,7 +168,11 @@ schlagen die Gewichtung – für Vorgaben, die keine Punktemischung kennen
 ```
 
 `any` = eine Bedingung reicht, `all` = alle müssen passen. `setScore` erzwingt
-einen Wert, `minScore`/`maxScore` heben bzw. deckeln. Eine `setScore`-Regel
+einen Wert, `minScore`/`maxScore` heben bzw. deckeln. Bedingungen gibt es in
+zwei Formen: Text (`match` / `matchAny`, Teilstring, case-insensitiv) und Zahl
+(`atLeast` / `below`, der Betrag wird aus der Antwort geparst, also
+`"2.000 - 2.999 €"` -> 2.500). Die Zahlenform ist robuster, wenn sich die
+Beschriftung der Antwortoption später ändert. Eine `setScore`-Regel
 greift auch dann, wenn sich mangels Antworten gar kein Score berechnen ließ –
 ein Disqualifikations-Merkmal reicht für ein Urteil. Gibt es weder eine
 passende Regel noch eine bewertbare Antwort, bleibt die Qualität leer, statt

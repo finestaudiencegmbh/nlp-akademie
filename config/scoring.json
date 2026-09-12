@@ -1,12 +1,14 @@
 {
   "_comment": "Bewertungsmodell für die Lead-Qualität des Result-Maker-Workshops. Bewertet werden die Antworten aus dem Umfrage-Tab. Nur Dimensionen, die unter 'weights' stehen, fließen in den Score ein – alle anderen Antworten werden nur angezeigt und exportiert. Fehlt eine Antwort, wird der Score auf die vorhandenen Gewichte renormiert (fehlende Angaben ziehen also nicht nach unten). Geändert wird hier – nicht im Code. Nach dem Speichern im Dashboard auf 'Aktualisieren' klicken.",
 
-  "_comment_annahme": "ACHTUNG – die Regeln für 'urgency' und die Einkommensstufen sind anhand der bisher einzigen Testzeile im Sheet ('In den nächsten Wochen', '2.000 - 2.999 €') gesetzt. Sobald die echten Antwortoptionen der Umfrage feststehen, hier gegenprüfen: nicht getroffene Antworten fallen still aus der Bewertung (bzw. auf 'default').",
+  "_comment_hauptregel": "LEITREGEL: Einkommen über 3.000 € = A-Lead. Umgesetzt über das Gewicht (income 0.8) plus die Einkommensstufe 1.0 ab 3.000 €: 0.8 * 100 = 80 Punkte, und die A-Grenze liegt bei 75 – ein Lead über 3.000 € kann also durch KEINE andere Antwort unter A fallen. Unter 3.000 € ist B das Maximum. Dringlichkeit und Berufsbezeichnung feilen nur noch innerhalb dieser Grenzen (Fine-Tuning später: Gewichte hier anheben).",
+
+  "_comment_annahme": "Die Regeln für 'urgency' sind anhand der bisherigen Testzeile im Sheet ('In den nächsten Wochen') gesetzt. Sobald die echten Antwortoptionen der Umfrage feststehen, hier gegenprüfen – nicht getroffene Antworten fallen auf 'default' (0.4) und beeinflussen den Score damit kaum. Sonderfall: Fehlt die Einkommens-Angabe komplett, entscheiden Dringlichkeit und Beruf allein (der Score wird auf die vorhandenen Gewichte renormiert).",
 
   "weights": {
-    "income": 0.45,
-    "urgency": 0.35,
-    "employment": 0.2
+    "income": 0.8,
+    "urgency": 0.14,
+    "employment": 0.06
   },
 
   "householdRule": {
@@ -18,13 +20,11 @@
   },
 
   "income": {
-    "_comment": "Monatliches Einkommen als Stufen (0..1). Aus der Antwort wird der Mittelwert der erkannten Spanne gebildet ('2.000 - 2.999 €' -> 2.500) und der ersten passenden Stufe (atLeast = untere Grenze) zugeordnet. 'unter X' und 'ab X' werden ebenfalls erkannt.",
+    "_comment": "Monatliches Einkommen (Spalte J der Umfrage) als Stufen (0..1). Aus der Antwort wird der Mittelwert der Spanne gebildet ('3.000 - 3.999 €' -> 3.500, '2.000 - 2.999 €' -> 2.500) und der ersten passenden Stufe zugeordnet (atLeast = untere Grenze). 'unter X' und 'ab X' werden ebenfalls erkannt. Die Grenze 3000 liegt bewusst ZWISCHEN den Mittelwerten der Bänder 2.000–2.999 und 3.000–3.999 – damit trennt sie die Antwortoptionen sauber.",
     "tiers": [
-      { "atLeast": 6000, "score": 1.0 },
-      { "atLeast": 4500, "score": 0.85 },
-      { "atLeast": 3500, "score": 0.65 },
-      { "atLeast": 2500, "score": 0.45 },
-      { "atLeast": 1500, "score": 0.25 },
+      { "atLeast": 3000, "score": 1.0 },
+      { "atLeast": 2000, "score": 0.45 },
+      { "atLeast": 1000, "score": 0.25 },
       { "atLeast": 0, "score": 0.1 }
     ]
   },

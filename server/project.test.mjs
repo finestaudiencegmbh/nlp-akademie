@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { parseSheets } from './parser.js';
 import { buildDataset } from './build.js';
-import { loadScoringConfig } from './scoring.js';
+import { loadScoringConfig, computeQuality } from './scoring.js';
 import { loadProjectConfig } from './project.js';
 
 const PROJECT = loadProjectConfig();
@@ -22,6 +22,7 @@ const leadsSheet = {
     ['2026-09-11 22:40:45', 'Roman', 'Huber', 'roman@example.com', 'meta', 'paid', 'JP | RML 14. & 15.10. | WARM UP | CBO | 101026', 'JP | Broad | CH | 30+', 'Video Hook A'],
     ['2026-09-11 23:10:00', 'Anna', 'Muster', 'anna@example.com', 'meta', 'paid', 'JP | RML 14. & 15.10. | WARM UP | CBO | 101026', 'JP | Broad | CH | 30+', 'Static 2'],
     ['2026-09-12 08:00:00', 'Orga', 'Nisch', 'orga@example.com', 'instagram', 'manychat', 'rml-workshop', '', ''],
+    ['2026-09-12 09:30:00', 'Beat', 'Keller', 'beat@example.com', 'meta', 'paid', 'JP | RML 14. & 15.10. | WARM UP | CBO | 101026', 'JP | Broad | CH | 30+', 'Static 2'],
   ],
 };
 
@@ -31,6 +32,8 @@ const umfrageSheet = {
     ['Datum Eintragung', 'Vorname', 'Nachname', 'E-Mail', 'Handynummer', 'Berufsbezeichnung', 'Alter', 'Größte Herausforderung', 'Dringlichkeit Lösung', 'Einkommen', 'Erwartung an Workshop', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'],
     ['0', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
     ['2026-09-11 22:42:45', 'Roman', 'Huber', 'roman@example.com', '41796000000', 'Angestellt', '40-49 Jahre', 'Allem gerecht werden', 'In den nächsten Wochen', '2.000 - 2.999 €', 'Ich möchte weiterkommen', 'meta', 'paid', 'JP | RML 14. & 15.10. | WARM UP | CBO | 101026', 'JP | Broad | CH | 30+', 'Video Hook A'],
+    // Leitregel: über 3.000 € = A-Lead, auch wenn alle anderen Antworten schwach sind
+    ['2026-09-12 09:35:00', 'Beat', 'Keller', 'beat@example.com', '41790000000', 'Arbeitssuchend', '50-59 Jahre', 'Keine Struktur', 'Irgendwann', '3.000 - 3.999 €', 'Mal reinschauen', 'meta', 'paid', 'JP | RML 14. & 15.10. | WARM UP | CBO | 101026', 'JP | Broad | CH | 30+', 'Static 2'],
   ],
 };
 
@@ -46,8 +49,8 @@ const funnelSheet = {
 
 const parsed = parseSheets([leadsSheet, umfrageSheet, funnelSheet], PROJECT.sheet, PROJECT.features);
 
-assert.equal(parsed.leads.length, 3, 'drei Leads erkannt (Zählzeile ignoriert)');
-assert.equal(parsed.tickets.length, 1, 'eine Umfrage-Zeile erkannt');
+assert.equal(parsed.leads.length, 4, 'vier Leads erkannt (Zählzeile ignoriert)');
+assert.equal(parsed.tickets.length, 2, 'zwei Umfrage-Zeilen erkannt');
 assert.equal(parsed.overview.length, 0, 'Funnel-Tab wird nicht als Übersicht missdeutet');
 assert.equal(parsed.leads[0].wonAt, '2026-09-11T22:40:45.000Z', 'Zeitstempel ohne Zonenangabe als UTC gelesen');
 assert.equal(parsed.tickets[0].answers.urgency, 'In den nächsten Wochen', 'Fragebogen-Spalte gemappt');
@@ -66,7 +69,7 @@ assert.equal(roman.creative, 'Video Hook A', 'Creative aus utm_content');
 // --- Zweite Stufe: Umfrage-Zeile = Gold-Ticket, über die E-Mail gejoint -----
 assert.equal(roman.hasTicket, true, 'Umfrage-Zeile zählt als Gold-Ticket');
 assert.equal(roman.ticketAt, '2026-09-11T22:42:45.000Z', 'Ticket-Zeitpunkt aus dem Umfrage-Tab');
-assert.equal(ds.counts.tickets, 1, 'genau ein Ticket');
+assert.equal(ds.counts.tickets, 2, 'zwei Tickets');
 
 const anna = ds.leads.find((l) => l.email === 'anna@example.com');
 assert.equal(anna.hasTicket, false, 'Lead ohne Umfrage bleibt Lead');
@@ -82,9 +85,22 @@ assert.ok(q, 'Qualität berechnet');
 assert.equal(q.breakdown.income, 45, 'Einkommen 2.000–2.999 € -> Stufe 0.45');
 assert.equal(q.breakdown.urgency, 90, 'Dringlichkeit "In den nächsten Wochen" -> 0.9');
 assert.equal(q.breakdown.employment, 70, 'Berufsbezeichnung "Angestellt" -> 0.7');
-const expected = Math.round((0.45 * 0.45 + 0.9 * 0.35 + 0.7 * 0.2) * 100);
+const w = scoring.weights;
+const expected = Math.round((0.45 * w.income + 0.9 * w.urgency + 0.7 * w.employment) * 100);
 assert.equal(q.score, expected, `Gesamtscore = gewichtetes Mittel (${expected})`);
-assert.ok(['A', 'B', 'C', 'D'].includes(q.tier), 'Tier zugeordnet');
+
+// --- LEITREGEL: über 3.000 € Einkommen ist immer A ------------------------
+// Beat hat die schwächsten Antworten außer beim Einkommen – trotzdem A.
+const beat = ds.leads.find((l) => l.email === 'beat@example.com');
+assert.equal(beat.hasTicket, true);
+assert.equal(beat.quality.breakdown.income, 100, 'Einkommen 3.000–3.999 € -> volle Stufe');
+assert.equal(beat.quality.tier, 'A', 'über 3.000 € = A-Lead, unabhängig von den übrigen Antworten');
+assert.ok(beat.quality.score >= 75, 'Score über der A-Schwelle');
+
+// Gegenprobe: unter 3.000 € darf auch mit Bestwerten überall nicht A werden
+const bestUnder3k = computeQuality({ income: '2.000 - 2.999 €', urgency: 'Sofort', employment: 'Unternehmer' }, scoring);
+assert.notEqual(bestUnder3k.tier, 'A', 'unter 3.000 € kein A-Lead');
 
 console.log('✓ Projekt-Konfiguration passt zum Sheet');
-console.log(`  ${PROJECT.name} | Ticket-Begriff: ${PROJECT.labels.ticket.many} | Leads: ${ds.counts.leads}, Tickets: ${ds.counts.tickets}, Score Roman: ${q.score} (${q.tier})`);
+console.log(`  ${PROJECT.name} | Ticket-Begriff: ${PROJECT.labels.ticket.many} | Leads: ${ds.counts.leads}, Tickets: ${ds.counts.tickets}`);
+console.log(`  Scoring: 2.000–2.999 € -> ${q.score} (${q.tier}) · 3.000–3.999 € -> ${beat.quality.score} (${beat.quality.tier})`);

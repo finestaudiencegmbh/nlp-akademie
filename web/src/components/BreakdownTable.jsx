@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { fmtEur, fmtInt, fmtPct, fmtScore } from '../lib.js';
+import { fmtEur, fmtInt, fmtPct, fmtQuality } from '../lib.js';
 import { useProject } from '../project.jsx';
 
 export default function BreakdownTable({ rows, dimLabel, onSelect, tiers, showActiveToggle = true }) {
@@ -26,10 +26,7 @@ export default function BreakdownTable({ rows, dimLabel, onSelect, tiers, showAc
       base.push({ key: 'cpl', label: '€/Lead', fmt: fmtEur });                 // 4
       if (hasTickets) base.push({ key: 'cpt', label: `€/${T.one}`, fmt: fmtEur }); // 5
     }
-    if (hasQuality) {
-      base.push({ key: 'qualifiedRate', label: 'Quali-Rate', fmt: fmtPct });   // 6
-      base.push({ key: 'avgQuality', label: 'Ø Quali', fmt: fmtScore });       // 7
-    }
+    if (hasQuality) base.push({ key: 'avgQuality', label: 'Lead-Qualität', fmt: fmtQuality }); // 6
     if (hasOutbound) base.push({ key: 'cvrStart', label: 'CVR Start', fmt: fmtPct }); // 8
     if (hasTickets) base.push({ key: 'ticketRate', label: `CVR ${T.one}`, fmt: fmtPct }); // 9
     if (hasImpressions) base.push({ key: 'cpm', label: 'CPM', fmt: fmtEur });   // 10

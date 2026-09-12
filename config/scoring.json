@@ -3,6 +3,8 @@
 
   "_comment_logik": "Die Einstufung folgt festen Geschäftsregeln, nicht einer Punkte-Mischung. Reihenfolge der Prüfung: (1) Disqualifikation (Rentner/Schüler/Arbeitssuchend/über 60) -> D. (2) Mittelfeld 2.000–2.999 € MIT Kaufsignal (hohe Dringlichkeit ODER selbstständig) -> B. (3) sonst entscheidet das Einkommen: über 3.000 € -> A, 2.000–2.999 € -> C, darunter -> D. Umgesetzt über die Einkommensstufen (income = einziges Gewicht) plus die harten Regeln unter 'rules'. Dringlichkeit und Berufsbezeichnung fließen mit Gewicht 0 nicht in den gerechneten Score ein, wirken aber über die Regeln – so bleibt die Einstufung nachvollziehbar statt vermischt.",
 
+  "_comment_skala": "Die Punktwerte sind eine SCHULNOTEN-SKALA: D = 0, C = 40, B = 70, A = 100. Das Dashboard zeigt als Lead-Qualität den Durchschnitt dieser Punkte in Prozent. Ein A und ein B ergeben also 85 %, nicht 50 %. Wer die Stufen verschiebt, verschiebt damit auch die angezeigte Qualität – die Werte müssen zu den 'tiers' unten passen (A ab 75, B ab 55, C ab 35).",
+
   "weights": {
     "income": 1.0,
     "urgency": 0,
@@ -17,7 +19,7 @@
         { "dim": "employment", "matchAny": ["rentner", "schüler", "student", "arbeitssuchend", "arbeitslos"] },
         { "dim": "age", "matchAny": ["über 60", "ueber 60", "60+"] }
       ],
-      "setScore": 15
+      "setScore": 0
     },
     {
       "label": "Mittelfeld mit Kaufsignal: hohe Dringlichkeit",
@@ -25,7 +27,7 @@
         { "dim": "income", "atLeast": 2000, "below": 3000 },
         { "dim": "urgency", "matchAny": ["sofort", "so schnell wie möglich", "nächsten wochen", "woche"] }
       ],
-      "setScore": 60
+      "setScore": 70
     },
     {
       "label": "Mittelfeld mit Kaufsignal: selbstständig oder Unternehmer",
@@ -33,16 +35,16 @@
         { "dim": "income", "atLeast": 2000, "below": 3000 },
         { "dim": "employment", "matchAny": ["selbstständig", "selbststaendig", "selbständig", "unternehmer"] }
       ],
-      "setScore": 60
+      "setScore": 70
     }
   ],
 
   "income": {
-    "_comment": "Netto-Einkommen (Spalte J der Umfrage). Antwortoptionen: 'Unter 1.999 €', '2.000 - 2.999 €', '3.000 - 3.999 €', '4.000 - 4.999 €', 'Über 5.000 €'. Aus der Antwort wird der Mittelwert der Spanne gebildet ('3.000 - 3.999 €' -> 3.500); 'Unter X' und 'Über X' werden erkannt. Die Stufenwerte sind so gesetzt, dass sie direkt auf die Tiers fallen: 1.0 -> 100 = A, 0.45 -> 45 = C, 0.1 -> 10 = D.",
+    "_comment": "Netto-Einkommen (Spalte J der Umfrage). Antwortoptionen: 'Unter 1.999 €', '2.000 - 2.999 €', '3.000 - 3.999 €', '4.000 - 4.999 €', 'Über 5.000 €'. Aus der Antwort wird der Mittelwert der Spanne gebildet ('3.000 - 3.999 €' -> 3.500); 'Unter X' und 'Über X' werden erkannt. Die Stufenwerte fallen direkt auf die Noten-Skala: 1.0 -> 100 = A, 0.4 -> 40 = C, 0.0 -> 0 = D.",
     "tiers": [
       { "atLeast": 3000, "score": 1.0 },
-      { "atLeast": 2000, "score": 0.45 },
-      { "atLeast": 0, "score": 0.1 }
+      { "atLeast": 2000, "score": 0.4 },
+      { "atLeast": 0, "score": 0.0 }
     ]
   },
 

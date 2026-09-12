@@ -73,7 +73,7 @@ export default function App() {
   const hourlyDay = (range.from && range.to && range.from === range.to) ? range.from : null;
   const leadDaily = useMemo(() => (data ? leadsByTime(filtered, hourlyDay) : []), [data, filtered, hourlyDay]);
   const cplDaily = useMemo(() => ((hasFb && fb.daily) ? cplByDay(fb.daily.spend, filtered) : []), [hasFb, fb, filtered]);
-  const qualityDaily = useMemo(() => (data ? qualityByDay(filtered, qualifiedTiers) : []), [data, filtered, qualifiedTiers]);
+  const qualityDaily = useMemo(() => (data ? qualityByDay(filtered) : []), [data, filtered]);
 
   // Drill-Pfad NUR für "Performance nach Ebene" – getrennt von den globalen
   // Filtern. Klick = reinzoomen, ohne dauerhaften globalen Filter zu setzen.

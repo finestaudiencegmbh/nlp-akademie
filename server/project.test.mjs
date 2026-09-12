@@ -83,7 +83,7 @@ assert.equal(orga.sourceType, 'organic', 'ManyChat -> organisch');
 // Roman: 2.000–2.999 € -> C, obwohl die Dringlichkeit hoch ist.
 const q = roman.quality;
 assert.ok(q, 'Qualität berechnet');
-assert.equal(q.breakdown.income, 45, 'Einkommen 2.000–2.999 € -> Stufe 0.45');
+assert.equal(q.breakdown.income, 40, 'Einkommen 2.000–2.999 € -> Stufe 0.4');
 assert.equal(q.tier, 'B', '2.000–2.999 € + hohe Dringlichkeit = B-Lead');
 
 // Beat: 3.000–3.999 €, sonst schwache Antworten -> trotzdem A.
@@ -135,6 +135,19 @@ for (const income of INCOMES) {
   assert.equal(tierOf({ income, employment: 'Selbstständig / Unternehmer', age: 'Über 60 Jahre', urgency: 'Sofort' }), 'D', 'über 60 -> immer D');
 }
 
+// --- Noten-Skala: D = 0, C = 40, B = 70, A = 100 --------------------------
+const scoreOf = (answers) => computeQuality(answers, scoring)?.score ?? null;
+assert.equal(scoreOf({ income: '3.000 - 3.999 €', employment: 'Angestellt', urgency: 'Irgendwann' }), 100, 'A = 100 %');
+assert.equal(scoreOf({ income: '2.000 - 2.999 €', employment: 'Angestellt', urgency: 'Sofort' }), 70, 'B = 70 %');
+assert.equal(scoreOf({ income: '2.000 - 2.999 €', employment: 'Angestellt', urgency: 'Irgendwann' }), 40, 'C = 40 %');
+assert.equal(scoreOf({ income: 'Unter 1.999 €', employment: 'Angestellt', urgency: 'Sofort' }), 0, 'D = 0 %');
+assert.equal(scoreOf({ income: 'Über 5.000 €', employment: 'Rentner', urgency: 'Sofort' }), 0, 'Disqualifikation = 0 %');
+
+// Der angezeigte Wert ist der Durchschnitt der Noten: ein A und ein B = 85 %
+const scoredLeads = ds.leads.filter((l) => l.quality);
+const schnitt = Math.round(scoredLeads.reduce((sum, l) => sum + l.quality.score, 0) / scoredLeads.length);
+assert.equal(schnitt, 85, 'ein A (100) und ein B (70) ergeben 85 % Lead-Qualität');
+
 // --- Qualifiziert zählt nur A: die beiden echten Leads aus dem Sheet ------
 assert.deepEqual(qualifiedTiersOf(scoring), ['A'], 'nur A gilt als qualifiziert');
 const tickets = ds.leads.filter((l) => l.hasTicket);
@@ -151,3 +164,4 @@ console.log('✓ Projekt-Konfiguration passt zum Sheet');
 console.log(`  ${PROJECT.name} | Ticket-Begriff: ${PROJECT.labels.ticket.many} | Leads: ${ds.counts.leads}, Tickets: ${ds.counts.tickets}`);
 console.log('  Einstufung: über 3.000 € -> A · Mittelfeld mit Kaufsignal -> B · Mittelfeld ohne -> C · unter 2.000 €/Rentner/Ü60 -> D');
 console.log('  (alle Kombinationen aus Einkommen x Beruf x Dringlichkeit x Alter geprüft)');
+console.log(`  Noten-Skala: D = 0 % · C = 40 % · B = 70 % · A = 100 % · Schnitt der echten Leads: ${schnitt} %`);

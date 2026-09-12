@@ -1,5 +1,5 @@
 import React from 'react';
-import { fmtEur, fmtInt, fmtPct } from '../lib.js';
+import { fmtEur, fmtInt, fmtPct, fmtQuality } from '../lib.js';
 import { useProject } from '../project.jsx';
 import TimeChart from './TimeChart.jsx';
 
@@ -58,8 +58,8 @@ export default function Kpis({ kpis, dist, tiers, qualifiedTiers = ['A', 'B'], q
         <section className="kpi-section">
           <div className="kpi-section-head"><span className="kpi-dot" style={{ background: GREEN }} />Lead-Qualität</div>
           <div className="kpi-grid">
-            <Card label="Qualifizierte Leads" value={fmtPct(kpis.qualifiedRate)} sub={`Tier ${qualifiedTiers.join('/')} der ${T.many}`} accent={GREEN} />
-            <Card label="Qualifizierte Leads" value={fmtInt(kpis.qualified)} sub={`von ${fmtInt(kpis.tickets)} ${T.many}`} accent={GREEN} />
+            <Card label="Lead-Qualität" value={fmtQuality(kpis.avgQuality)} sub="Ø Note · D = 0 %, A = 100 %" accent={GREEN} />
+            <Card label={`${qualifiedTiers.join('/')}-Leads`} value={fmtInt(kpis.qualified)} sub={`von ${fmtInt(kpis.tickets)} ${T.many}`} accent={GREEN} />
             <div className="kpi-card kpi-dist">
               <div className="kpi-label">Qualitäts-Verteilung ({T.many})</div>
               <div className="dist-bars">
@@ -86,7 +86,7 @@ export default function Kpis({ kpis, dist, tiers, qualifiedTiers = ['A', 'B'], q
             <div className="kpi-quality-chart">
               <TimeChart title="Lead-Qualität pro Tag" height={200}
                 formatY={(v) => `${Math.round(v)} %`}
-                series={[{ key: 'q', label: 'Qualifizierte Leads', color: GREEN, data: qualityDaily.map((d) => ({ date: d.date, value: d.value == null ? null : d.value * 100 })) }]} />
+                series={[{ key: 'q', label: 'Lead-Qualität', color: GREEN, data: qualityDaily.map((d) => ({ date: d.date, value: d.value })) }]} />
             </div>
           )}
         </section>

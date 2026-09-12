@@ -8,6 +8,8 @@ export const fmtEur2 = (n) => (n == null || Number.isNaN(n) ? '–' : eur2.forma
 export const fmtInt = (n) => (n == null ? '–' : intf.format(n));
 export const fmtPct = (n) => (n == null || Number.isNaN(n) ? '–' : `${(n * 100).toFixed(1)} %`);
 export const fmtScore = (n) => (n == null ? '–' : String(Math.round(n)));
+/** Lead-Qualität als Note in Prozent: D = 0 %, C = 40 %, B = 70 %, A = 100 %. */
+export const fmtQuality = (n) => (n == null || Number.isNaN(n) ? '–' : `${Math.round(n)} %`);
 export const fmtDate = (iso) => {
   if (!iso) return '–';
   const d = new Date(iso);
@@ -368,24 +370,24 @@ export function cplByDay(spendDaily, leads) {
 }
 
 /**
- * Lead-Qualität pro Tag = Anteil qualifizierter Tickets (Tier A/B) an allen
- * Tickets des Tages. Nur Tage MIT Tickets, damit der Verlauf nicht künstlich
- * auf 0 fällt. value als Bruch (0..1).
+ * Lead-Qualität pro Tag = Durchschnitt der Noten-Punkte des Tages (0..100).
+ * D = 0, C = 40, B = 70, A = 100. Nur Tage MIT bewerteten Leads, damit der
+ * Verlauf nicht künstlich auf 0 fällt.
  */
-export function qualityByDay(leads, qualifiedTiers = ['A', 'B']) {
+export function qualityByDay(leads) {
   const m = new Map();
   for (const l of leads) {
-    if (!l.hasTicket) continue;
+    if (!l.hasTicket || !l.quality) continue;
     const day = dayKey(l.wonAt);
     if (!day) continue;
-    if (!m.has(day)) m.set(day, { date: day, tickets: 0, qualified: 0 });
+    if (!m.has(day)) m.set(day, { date: day, sum: 0, n: 0 });
     const e = m.get(day);
-    e.tickets += 1;
-    if (qualifiedTiers.includes(l.quality?.tier)) e.qualified += 1;
+    e.sum += l.quality.score;
+    e.n += 1;
   }
   return [...m.values()]
     .sort((a, b) => (a.date < b.date ? -1 : 1))
-    .map((e) => ({ date: e.date, value: e.tickets ? e.qualified / e.tickets : null }));
+    .map((e) => ({ date: e.date, value: e.n ? Math.round(e.sum / e.n) : null }));
 }
 
 export function tierDistribution(leads, tiers) {

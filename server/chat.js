@@ -64,8 +64,8 @@ export function buildContext(payload, filtered, features = {}, qualifiedTiers = 
       leads_organisch: organic.length,
       ...(hasTickets ? { tickets: tickets.length } : {}),
       ...(hasQuality ? {
-        qualifizierte_tickets: qualified.length,
-        quali_rate: tickets.length ? round(qualified.length / tickets.length) : null,
+        lead_qualitaet_prozent: scored.length ? Math.round(scored.reduce((s, l) => s + l.quality.score, 0) / scored.length) : null,
+        top_leads: qualified.length,
       } : {}),
       ad_spend_gesamt: round(fb.totals?.spend ?? null),
       ad_spend_lead_kampagnen: round(fb.totals?.leadSpend ?? null),

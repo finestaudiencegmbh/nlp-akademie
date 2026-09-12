@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { fmtEur, fmtEur2, fmtInt, fmtPct, fmtScore } from '../lib.js';
+import { fmtEur, fmtEur2, fmtInt, fmtPct, fmtQuality } from '../lib.js';
 import { useProject } from '../project.jsx';
 
 /**
@@ -18,7 +18,7 @@ const buildKpis = ({ accent, features, ticket }) => [
   ...(features.hasTickets ? [{ key: 'tickets', label: ticket.many, color: '#6fcf97', fmt: fmtInt, sheet: true,
     value: (p) => p.tickets,
     total: (t) => t.tickets }] : []),
-  ...(features.hasQuality ? [{ key: 'quality', label: 'Lead-Qualität', color: '#6dd47e', fmt: fmtScore, sheet: true,
+  ...(features.hasQuality ? [{ key: 'quality', label: 'Lead-Qualität', color: '#6dd47e', fmt: fmtQuality, sheet: true,
     value: (p) => p.quality,
     total: (t) => (t.qLeads ? Math.round(t.qSum / t.qLeads) : null) }] : []),
   { key: 'spend', label: 'Adspend', color: '#9db4e8', fmt: fmtEur,

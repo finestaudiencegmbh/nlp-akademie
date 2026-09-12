@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { fmtEur, fmtInt, fmtPct, entityKey, minuteSeriesFromEvents } from '../lib.js';
+import { fmtEur, fmtInt, fmtPct, fmtQuality, entityKey, minuteSeriesFromEvents } from '../lib.js';
 import { useProject } from '../project.jsx';
 import GraphPanel from './GraphPanel.jsx';
 
@@ -40,7 +40,7 @@ function Metrics({ n, leadHidden }) {
     {
       title: hasQuality ? 'Qualität & Funnel' : 'Funnel', cls: 'g-quality',
       items: [
-        ...(hasQuality ? [['Quali-Rate', lead(fmtPct(n.qualifiedRate))], ['Ø Quali', lead(fmtScore(n.avgQuality))]] : []),
+        ...(hasQuality ? [['Lead-Qualität', lead(fmtQuality(n.avgQuality))]] : []),
         ['CVR Start', lead(fmtPct(n.cvrStart))],
         ...(hasTickets ? [[`CVR ${T.one}`, lead(fmtPct(n.cvrTicket))]] : []),
       ],
@@ -91,7 +91,7 @@ export default function CampaignCards({ hierarchy, dailyByEntity, intradayByEnti
     { label: 'Leads', value: (ad, hidden) => (hidden ? '–' : fmtInt(ad.leads)) },
     { label: 'CPL', value: (ad, hidden) => (hidden ? '–' : fmtEur(ad.cpl)) },
     ...(hasTickets ? [{ label: T.many, value: (ad, hidden) => (hidden ? '–' : fmtInt(ad.tickets)) }] : []),
-    ...(hasQuality ? [{ label: 'Quali-Rate', value: (ad, hidden) => (hidden ? '–' : fmtPct(ad.qualifiedRate)) }] : []),
+    ...(hasQuality ? [{ label: 'Qualität', value: (ad, hidden) => (hidden ? '–' : fmtQuality(ad.avgQuality)) }] : []),
     { label: 'CVR Start', value: (ad, hidden) => (hidden ? '–' : fmtPct(ad.cvrStart)) },
     { label: 'CTR ausg.', value: (ad) => fmtPct(ad.outboundCtr), always: true },
   ];
@@ -155,7 +155,7 @@ export default function CampaignCards({ hierarchy, dailyByEntity, intradayByEnti
                             <span className="cc-sm-item"><b>{fmtEur(a.spend)}</b> Adspend</span>
                             <span className="cc-sm-item"><b>{leadHidden ? '–' : fmtInt(a.leads)}</b> Leads</span>
                             <span className="cc-sm-item"><b>{leadHidden ? '–' : fmtEur(a.cpl)}</b> CPL</span>
-                            {hasQuality && <span className="cc-sm-item"><b>{leadHidden ? '–' : fmtPct(a.qualifiedRate)}</b> Quali</span>}
+                            {hasQuality && <span className="cc-sm-item"><b>{leadHidden ? '–' : fmtQuality(a.avgQuality)}</b> Quali</span>}
                           </span>
                           {hasGraph('adset', { campaign: c.name, adset: a.name }) && <GraphBtn onClick={() => openGraph('adset', { campaign: c.name, adset: a.name }, a.name)} />}
                         </div>

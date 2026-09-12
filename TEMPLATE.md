@@ -229,8 +229,14 @@ ersetzen.
 
 ## 7. Deployen (Render)
 
-`render.yaml` ist ein fertiger Blueprint. Anpassen: `name` (bestimmt die URL).
-Alle Secrets stehen auf `sync: false` und werden beim Deploy abgefragt.
+`render.yaml` ist ein fertiger Blueprint. Alle Secrets stehen auf `sync: false`
+und werden beim Deploy abgefragt.
+
+**Zum Service-Namen:** Render ordnet Services über den `name` in der
+`render.yaml` zu. Bei einem NEUEN Projekt den Namen einmal sauber setzen, bevor
+der Blueprint das erste Mal synchronisiert. Bei einem BESTEHENDEN Service den
+Namen nicht mehr ändern – der nächste Sync würde sonst einen zweiten Service
+anlegen (neue URL, leere Env-Vars), während der alte aus dem Blueprint fällt.
 
 ```bash
 npm run serve   # lokal wie in Production (Build + Server auf einem Port)

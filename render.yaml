@@ -1,11 +1,15 @@
 # Render.com Blueprint – Ein-Klick-Deployment des Dashboards.
 # Anleitung in TEMPLATE.md. Secrets (Service-Account, Login, Tokens) werden
 # NICHT hier gespeichert, sondern beim Deploy abgefragt (sync: false).
-# Pro Projekt anzupassen: name (Service-/URL-Name).
+# Pro Projekt anzupassen: name (Service-/URL-Name) – siehe Warnung unten.
 
 services:
   - type: web
-    name: workshop-lead-dashboard
+    # WICHTIG: Render ordnet Services über diesen Namen zu. Wird er geändert,
+    # legt der nächste Blueprint-Sync einen NEUEN Service an (neue URL, leere
+    # Env-Vars) und der bestehende fällt aus dem Blueprint. Für ein neues
+    # Projekt daher entweder von Anfang an setzen oder den Umzug bewusst machen.
+    name: mmv-fuatmarta-dashboard
     runtime: node
     plan: free
     # devDependencies (vite) werden für den Build gebraucht -> explizit mitinstallieren

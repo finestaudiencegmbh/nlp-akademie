@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { fetchData } from './api.js';
-import { applyFilters, aggregate, computeKpis, tierDistribution, leadsByDay, leadsByTime, cplByDay, qualityByDay, DIMENSIONS, fmtDate } from './lib.js';
+import { applyFilters, aggregate, computeKpis, tierDistribution, leadsByDay, leadsByTime, cplByDay, qualityByDay, qualifiedTiersOf, DIMENSIONS, fmtDate } from './lib.js';
 import Kpis from './components/Kpis.jsx';
 import Filters from './components/Filters.jsx';
 import BreakdownTable from './components/BreakdownTable.jsx';
@@ -62,16 +62,18 @@ export default function App() {
   };
 
   const tiers = data?.scoring?.tiers || [];
+  // Welche Stufen als "qualifiziert" zählen, entscheidet config/scoring.json
+  const qualifiedTiers = useMemo(() => qualifiedTiersOf(tiers), [tiers]);
   const fb = data?.fb || null;
   const hasFb = Boolean(fb?.byDim);
   const filtered = useMemo(() => (data ? applyFilters(data.leads, filters) : []), [data, filters]);
-  const kpis = useMemo(() => (data ? computeKpis(filtered, data.overviewByAdset, fb, features) : null), [data, filtered, fb, features]);
+  const kpis = useMemo(() => (data ? computeKpis(filtered, data.overviewByAdset, fb, features, qualifiedTiers) : null), [data, filtered, fb, features, qualifiedTiers]);
   const dist = useMemo(() => (data ? tierDistribution(filtered, tiers) : {}), [data, filtered, tiers]);
   // Stunden-Raster, wenn der gewählte Zeitraum genau EIN Tag ist (0–24 Uhr).
   const hourlyDay = (range.from && range.to && range.from === range.to) ? range.from : null;
   const leadDaily = useMemo(() => (data ? leadsByTime(filtered, hourlyDay) : []), [data, filtered, hourlyDay]);
   const cplDaily = useMemo(() => ((hasFb && fb.daily) ? cplByDay(fb.daily.spend, filtered) : []), [hasFb, fb, filtered]);
-  const qualityDaily = useMemo(() => (data ? qualityByDay(filtered) : []), [data, filtered]);
+  const qualityDaily = useMemo(() => (data ? qualityByDay(filtered, qualifiedTiers) : []), [data, filtered, qualifiedTiers]);
 
   // Drill-Pfad NUR für "Performance nach Ebene" – getrennt von den globalen
   // Filtern. Klick = reinzoomen, ohne dauerhaften globalen Filter zu setzen.
@@ -96,8 +98,8 @@ export default function App() {
   const paidRows = useMemo(() => {
     if (!data) return [];
     const leads = drillLeads.filter((l) => l.sourceType === 'paid' && l.campaign !== UNATTRIB);
-    return aggregate(leads, tab, data.overviewByAdset, fb, drill, { features });
-  }, [data, drillLeads, tab, fb, drill, features]);
+    return aggregate(leads, tab, data.overviewByAdset, fb, drill, { features, qualifiedTiers });
+  }, [data, drillLeads, tab, fb, drill, features, qualifiedTiers]);
 
   const organicRows = useMemo(() => {
     if (!data) return [];
@@ -110,10 +112,10 @@ export default function App() {
     const dim = orgDrill ? 'organicAdset' : 'organicCampaign';
     const rows = aggregate(
       leads.map((l) => ({ ...l, organicCampaign: l.organicCampaign || '(direkt)', organicAdset: l.organicAdset || '(direkt)' })),
-      dim, data.overviewByAdset, fb, {}, { addFbRows: false, features }
+      dim, data.overviewByAdset, fb, {}, { addFbRows: false, features, qualifiedTiers }
     );
     return rows;
-  }, [data, filtered, fb, orgDrill, features]);
+  }, [data, filtered, fb, orgDrill, features, qualifiedTiers]);
 
   // Drill-Down: Klick auf eine Zeile zoomt eine Ebene tiefer (lokaler Pfad).
   const DRILL_ORDER = ['campaign', 'adset', 'creative', 'placement'];
@@ -234,7 +236,7 @@ export default function App() {
                 </section>
 
                 {/* KPI-Boxen darunter */}
-                <Kpis kpis={kpis} dist={dist} tiers={tiers} qualityDaily={qualityDaily} />
+                <Kpis kpis={kpis} dist={dist} tiers={tiers} qualifiedTiers={qualifiedTiers} qualityDaily={qualityDaily} />
 
                 <section className="panel">
                   <div className="panel-head"><div><h2>Bezahlt · Meta</h2><span className="panel-sub">Performance nach Kampagne, Anzeigengruppe, Creative und Placement</span></div></div>

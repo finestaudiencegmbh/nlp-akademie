@@ -16,7 +16,7 @@ export function isChatConfigured() {
 const MODEL = 'claude-opus-4-8';
 
 /** Verdichtet das Dashboard-Payload zu einem kompakten, anonymen Kontext. */
-export function buildContext(payload, filtered, features = {}) {
+export function buildContext(payload, filtered, features = {}, qualifiedTiers = ['A', 'B']) {
   const { hasTickets = true, hasQuality = true } = features;
   const round = (n) => (n == null ? null : Math.round(n * 100) / 100);
   const leads = filtered || payload.leads || [];
@@ -25,7 +25,7 @@ export function buildContext(payload, filtered, features = {}) {
   const organic = leads.filter((l) => l.sourceType !== 'paid');
   const tickets = hasTickets ? leads.filter((l) => l.hasTicket) : [];
   const scored = tickets.filter((l) => l.quality);
-  const qualified = tickets.filter((l) => ['A', 'B'].includes(l.quality?.tier));
+  const qualified = tickets.filter((l) => qualifiedTiers.includes(l.quality?.tier));
 
   // Verteilungen
   const tierDist = {};
@@ -48,7 +48,7 @@ export function buildContext(payload, filtered, features = {}) {
       if (!hasTickets || !l.hasTicket) continue;
       const e = ensure((tKey && l[tKey]) ? l[tKey] : (l[key] || '(unbekannt)'));
       e.tickets += 1;
-      if (hasQuality && ['A', 'B'].includes(l.quality?.tier)) e.qualified += 1;
+      if (hasQuality && qualifiedTiers.includes(l.quality?.tier)) e.qualified += 1;
     }
     return [...m.values()].sort((a, b) => b.leads - a.leads).slice(0, 25);
   };

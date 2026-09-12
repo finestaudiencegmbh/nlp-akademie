@@ -88,6 +88,8 @@ function pathKey(dim, { campaign, adset, creative }) {
 export function combineMetaWithLeads(meta, leads, opts = {}) {
   const features = { hasTickets: true, hasQuality: true, ...(opts.features || {}) };
   const { hasTickets, hasQuality } = features;
+  // Welche Qualitäts-Stufen als "qualifiziert" gelten (config: tiers[].qualified)
+  const qualifiedTiers = opts.qualifiedTiers || ['A', 'B'];
   const { entities = [], daily = [], dailyEntities = [], campaignStatus = {}, adsetStatus = {}, adStatus = {}, adList = [] } = meta || {};
 
   // Alle Ads je Anzeigengruppen-PFAD (Kampagne ▸ Anzeigengruppe), damit Anzeigen
@@ -185,7 +187,7 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
         if (hasQuality && l.quality) {
           e.scoreSum += l.quality.score;
           e.scored += 1;
-          if (['A', 'B'].includes(l.quality.tier)) e.qualified += 1;
+          if (qualifiedTiers.includes(l.quality.tier)) e.qualified += 1;
         }
       }
     }
@@ -386,7 +388,7 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
   // Tagesreihen JE Entität (Kampagne/Anzeigengruppe/Creative) für die
   // "Grafik"-Ansicht: FB-Tagesdaten + Plattform-Split + Sheet-Leads/Tickets/
   // Qualität, alles je Tag. Schlüssel = normalisierter Name.
-  const dailyByEntity = buildDailyByEntity(dailyEntities, leads || [], features);
+  const dailyByEntity = buildDailyByEntity(dailyEntities, leads || [], features, qualifiedTiers);
 
   // Minutengenaue Events je Entität (nur Sheet-KPIs: Leads/Tickets/Qualität),
   // wenn der Zeitraum genau EIN Tag ist. Meta-Spend ist hier (noch) nicht dabei.
@@ -411,7 +413,7 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
  * pro Plattform) und Sheet-Werten (leads/tickets/quality). Das Frontend leitet
  * daraus die überlagerbaren KPIs ab (CPL, CPM, CTR, CPC, €/Ticket, Qualität …).
  */
-function buildDailyByEntity(dailyEntities, leads, features = {}) {
+function buildDailyByEntity(dailyEntities, leads, features = {}, qualifiedTiers = ['A', 'B']) {
   const { hasTickets = true, hasQuality = true } = features;
   const dims = ['campaign', 'adset', 'creative'];
   const fb = { campaign: new Map(), adset: new Map(), creative: new Map() };
@@ -466,7 +468,7 @@ function buildDailyByEntity(dailyEntities, leads, features = {}) {
           if (hasQuality && l.quality) {
             d.scoreSum += l.quality.score;
             d.scored += 1;
-            if (['A', 'B'].includes(l.quality.tier)) d.qualified += 1;
+            if (qualifiedTiers.includes(l.quality.tier)) d.qualified += 1;
           }
         }
       }

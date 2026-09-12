@@ -80,8 +80,9 @@
     "default": 0.5
   },
 
+  "_comment_tiers": "qualified: true = zählt in der Kachel 'Qualifizierte Leads' und in der Quali-Rate je Kampagne/Creative. Aktuell nur A, also Einkommen über 3.000 €. B ist weiterhin eine eigene Note für die Anrufreihenfolge, gilt aber nicht als qualifiziert.",
   "tiers": [
-    { "key": "A", "label": "A · Top", "min": 75, "color": "#16a34a" },
+    { "key": "A", "label": "A · Top", "min": 75, "color": "#16a34a", "qualified": true },
     { "key": "B", "label": "B · Gut", "min": 55, "color": "#65a30d" },
     { "key": "C", "label": "C · Mittel", "min": 35, "color": "#d97706" },
     { "key": "D", "label": "D · Schwach", "min": 0, "color": "#dc2626" }

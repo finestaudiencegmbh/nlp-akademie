@@ -5,6 +5,16 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.join(__dirname, '..', 'config', 'scoring.json');
 
+/**
+ * Welche Tiers als "qualifiziert" zählen (Kachel + Quali-Rate). Steht als
+ * "qualified": true an den Tiers in scoring.json. Ohne Angabe bleibt es beim
+ * bisherigen Verhalten (A und B).
+ */
+export function qualifiedTiersOf(cfg) {
+  const marked = (cfg?.tiers || []).filter((t) => t.qualified).map((t) => t.key);
+  return marked.length ? marked : ['A', 'B'];
+}
+
 export function loadScoringConfig() {
   const raw = fs.readFileSync(CONFIG_PATH, 'utf8');
   return JSON.parse(raw);

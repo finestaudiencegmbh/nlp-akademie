@@ -17,7 +17,7 @@ function Card({ label, value, sub, accent }) {
 const CYAN = '#5ec8d8';
 const GREEN = '#6fcf97';
 
-export default function Kpis({ kpis, dist, tiers, qualityDaily = [] }) {
+export default function Kpis({ kpis, dist, tiers, qualifiedTiers = ['A', 'B'], qualityDaily = [] }) {
   const { features, labels, branding } = useProject();
   const { hasTickets, hasQuality } = features;
   const T = labels.ticket;
@@ -58,7 +58,7 @@ export default function Kpis({ kpis, dist, tiers, qualityDaily = [] }) {
         <section className="kpi-section">
           <div className="kpi-section-head"><span className="kpi-dot" style={{ background: GREEN }} />Lead-Qualität</div>
           <div className="kpi-grid">
-            <Card label="Qualifizierte Leads" value={fmtPct(kpis.qualifiedRate)} sub={`Tier A/B der ${T.many}`} accent={GREEN} />
+            <Card label="Qualifizierte Leads" value={fmtPct(kpis.qualifiedRate)} sub={`Tier ${qualifiedTiers.join('/')} der ${T.many}`} accent={GREEN} />
             <Card label="Qualifizierte Leads" value={fmtInt(kpis.qualified)} sub={`von ${fmtInt(kpis.tickets)} ${T.many}`} accent={GREEN} />
             <div className="kpi-card kpi-dist">
               <div className="kpi-label">Qualitäts-Verteilung ({T.many})</div>

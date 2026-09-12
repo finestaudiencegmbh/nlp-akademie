@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { parseSheets } from './parser.js';
 import { buildDataset } from './build.js';
-import { loadScoringConfig, computeQuality } from './scoring.js';
+import { loadScoringConfig, computeQuality, qualifiedTiersOf } from './scoring.js';
 import { loadProjectConfig } from './project.js';
 
 const PROJECT = loadProjectConfig();
@@ -134,6 +134,13 @@ for (const income of INCOMES) {
   }
   assert.equal(tierOf({ income, employment: 'Selbstständig / Unternehmer', age: 'Über 60 Jahre', urgency: 'Sofort' }), 'D', 'über 60 -> immer D');
 }
+
+// --- Qualifiziert zählt nur A: die beiden echten Leads aus dem Sheet ------
+assert.deepEqual(qualifiedTiersOf(scoring), ['A'], 'nur A gilt als qualifiziert');
+const tickets = ds.leads.filter((l) => l.hasTicket);
+const qualified = tickets.filter((l) => qualifiedTiersOf(scoring).includes(l.quality?.tier));
+assert.equal(tickets.length, 2, 'zwei Gold-Tickets');
+assert.equal(qualified.length, 1, 'nur der A-Lead zählt als qualifiziert, der B-Lead nicht');
 
 // Disqualifikation greift auch ohne Einkommens-Angabe
 assert.equal(tierOf({ employment: 'Rentner' }), 'D', 'Rentner ohne Einkommens-Angabe -> D');

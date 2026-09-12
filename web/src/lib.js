@@ -30,6 +30,16 @@ export const DIMENSIONS = [
   { key: 'placement', label: 'Placement' },
 ];
 
+/**
+ * Welche Qualitäts-Stufen als "qualifiziert" zählen. Steht als
+ * "qualified": true an den Tiers in config/scoring.json und kommt über
+ * /api/data mit. Ohne Markierung bleibt es beim bisherigen Verhalten (A und B).
+ */
+export function qualifiedTiersOf(tiers) {
+  const marked = (tiers || []).filter((t) => t.qualified).map((t) => t.key);
+  return marked.length ? marked : ['A', 'B'];
+}
+
 export function uniqueValues(leads, key) {
   return [...new Set(leads.map((l) => l[key]).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'));
 }
@@ -120,7 +130,7 @@ function spendForAdsets(adsetNames, overviewByAdset) {
  * Anzeigengruppe aus der Sheet-Übersicht (nur Kampagne/Anzeigengruppe).
  */
 export function aggregate(leads, dimKey, overviewByAdset, fb, filters = {}, opts = {}) {
-  const { addFbRows = true, features = {} } = opts; // FB-only-Zeilen (pausierte/leere Kampagnen) ergänzen?
+  const { addFbRows = true, features = {}, qualifiedTiers = ['A', 'B'] } = opts; // FB-only-Zeilen (pausierte/leere Kampagnen) ergänzen?
   const fbDim = addFbRows ? (fb?.byDim?.[dimKey] || null) : null;
   // Tickets werden nach ihrer EIGENEN Herkunft (Ticket-UTM) gezählt, nicht nach
   // der Lead-Zeile – sonst landet ein Ticket in jeder Kampagne, in der die Person
@@ -152,7 +162,7 @@ export function aggregate(leads, dimKey, overviewByAdset, fb, filters = {}, opts
     const avgQuality = scored.length
       ? Math.round(scored.reduce((s, l) => s + l.quality.score, 0) / scored.length)
       : null;
-    const qualified = ticketLeads.filter((l) => ['A', 'B'].includes(l.quality?.tier)).length;
+    const qualified = ticketLeads.filter((l) => qualifiedTiers.includes(l.quality?.tier)).length;
 
     const dm = addFbRows ? (fb?.dimMeta?.[dimKey]?.[normKey(g.key)] || null) : null;
     const m = fbDim ? fbDim[normKey(g.key)] : null;
@@ -214,7 +224,7 @@ function makeRow({ key, total, tickets, avgQuality, qualified, spend, impression
   };
 }
 
-export function computeKpis(leads, overviewByAdset, fb, features = {}) {
+export function computeKpis(leads, overviewByAdset, fb, features = {}, qualifiedTiers = ['A', 'B']) {
   const { hasTickets = true, hasQuality = true } = features;
   const total = leads.length;
   const paid = leads.filter((l) => l.sourceType === 'paid');
@@ -228,7 +238,7 @@ export function computeKpis(leads, overviewByAdset, fb, features = {}) {
   // Qualität: über alle bewerteten Tickets (Antworten kommen aus dem Sheet,
   // unabhängig von der Quelle)
   const scored = hasQuality ? ticketLeads.filter((l) => l.quality) : [];
-  const qualified = hasQuality ? ticketLeads.filter((l) => ['A', 'B'].includes(l.quality?.tier)).length : 0;
+  const qualified = hasQuality ? ticketLeads.filter((l) => qualifiedTiers.includes(l.quality?.tier)).length : 0;
 
   let spend = fb?.totals?.spend ?? null;
   let impressions = fb?.totals?.impressions ?? null;
@@ -362,7 +372,7 @@ export function cplByDay(spendDaily, leads) {
  * Tickets des Tages. Nur Tage MIT Tickets, damit der Verlauf nicht künstlich
  * auf 0 fällt. value als Bruch (0..1).
  */
-export function qualityByDay(leads) {
+export function qualityByDay(leads, qualifiedTiers = ['A', 'B']) {
   const m = new Map();
   for (const l of leads) {
     if (!l.hasTicket) continue;
@@ -371,7 +381,7 @@ export function qualityByDay(leads) {
     if (!m.has(day)) m.set(day, { date: day, tickets: 0, qualified: 0 });
     const e = m.get(day);
     e.tickets += 1;
-    if (['A', 'B'].includes(l.quality?.tier)) e.qualified += 1;
+    if (qualifiedTiers.includes(l.quality?.tier)) e.qualified += 1;
   }
   return [...m.values()]
     .sort((a, b) => (a.date < b.date ? -1 : 1))

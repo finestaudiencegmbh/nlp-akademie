@@ -23,6 +23,8 @@ const leadsSheet = {
     ['2026-09-11 23:10:00', 'Anna', 'Muster', 'anna@example.com', 'meta', 'paid', 'JP | RML 14. & 15.10. | WARM UP | CBO | 101026', 'JP | Broad | CH | 30+', 'Static 2'],
     ['2026-09-12 08:00:00', 'Orga', 'Nisch', 'orga@example.com', 'instagram', 'manychat', 'rml-workshop', '', ''],
     ['2026-09-12 09:30:00', 'Beat', 'Keller', 'beat@example.com', 'meta', 'paid', 'JP | RML 14. & 15.10. | WARM UP | CBO | 101026', 'JP | Broad | CH | 30+', 'Static 2'],
+    // Echter Fall aus dem Sheet: im Fragebogen vertippt sie sich in der E-Mail
+    ['2026-09-12 06:33:25', 'Dunja', 'Jenni', 'dunjavoegeli@hotmail.com', 'meta', 'paid', 'JP | RML 14. & 15.10. | WARM UP | CBO | 101026', 'JP | Broad | CH | 30+', 'Static 2'],
   ],
 };
 
@@ -32,6 +34,8 @@ const umfrageSheet = {
     ['Datum Eintragung', 'Vorname', 'Nachname', 'E-Mail', 'Handynummer', 'Berufsbezeichnung', 'Alter', 'Größte Herausforderung', 'Dringlichkeit Lösung', 'Einkommen', 'Erwartung an Workshop', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'],
     ['0', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
     ['2026-09-11 22:42:45', 'Roman', 'Huber', 'roman@example.com', '41796000000', 'Angestellt', '40-49 Jahre', 'Allem gerecht werden', 'In den nächsten Wochen', '2.000 - 2.999 €', 'Ich möchte weiterkommen', 'meta', 'paid', 'JP | RML 14. & 15.10. | WARM UP | CBO | 101026', 'JP | Broad | CH | 30+', 'Video Hook A'],
+    // Gleiche Person wie im Lead-Tab, aber "ö" statt "l" in der E-Mail
+    ['2026-09-12 06:37:18', 'Dunja', 'Jenni', 'dunjavoegeöi@hotmail.com', '41765120410', 'Angestellt', '40-49 Jahre', 'Nachts grübeln', 'In den nächsten Monaten', '3.000 - 3.999 €', 'Mal sehen', 'meta', 'paid', 'JP | RML 14. & 15.10. | WARM UP | CBO | 101026', 'JP | Broad | CH | 30+', ''],
     // Leitregel: über 3.000 € = A-Lead, auch wenn alle anderen Antworten schwach sind
     ['2026-09-12 09:35:00', 'Beat', 'Keller', 'beat@example.com', '41790000000', 'Angestellt', '50-59 Jahre', 'Keine Struktur', 'Irgendwann', '3.000 - 3.999 €', 'Mal reinschauen', 'meta', 'paid', 'JP | RML 14. & 15.10. | WARM UP | CBO | 101026', 'JP | Broad | CH | 30+', 'Static 2'],
   ],
@@ -49,8 +53,8 @@ const funnelSheet = {
 
 const parsed = parseSheets([leadsSheet, umfrageSheet, funnelSheet], PROJECT.sheet, PROJECT.features);
 
-assert.equal(parsed.leads.length, 4, 'vier Leads erkannt (Zählzeile ignoriert)');
-assert.equal(parsed.tickets.length, 2, 'zwei Umfrage-Zeilen erkannt');
+assert.equal(parsed.leads.length, 5, 'fünf Leads erkannt (Zählzeile ignoriert)');
+assert.equal(parsed.tickets.length, 3, 'drei Umfrage-Zeilen erkannt');
 assert.equal(parsed.overview.length, 0, 'Funnel-Tab wird nicht als Übersicht missdeutet');
 assert.equal(parsed.leads[0].wonAt, '2026-09-11T22:40:45.000Z', 'Zeitstempel ohne Zonenangabe als UTC gelesen');
 assert.equal(parsed.tickets[0].answers.urgency, 'In den nächsten Wochen', 'Fragebogen-Spalte gemappt');
@@ -69,7 +73,15 @@ assert.equal(roman.creative, 'Video Hook A', 'Creative aus utm_content');
 // --- Zweite Stufe: Umfrage-Zeile = Gold-Ticket, über die E-Mail gejoint -----
 assert.equal(roman.hasTicket, true, 'Umfrage-Zeile zählt als Gold-Ticket');
 assert.equal(roman.ticketAt, '2026-09-11T22:42:45.000Z', 'Ticket-Zeitpunkt aus dem Umfrage-Tab');
-assert.equal(ds.counts.tickets, 2, 'zwei Tickets');
+assert.equal(ds.counts.tickets, 3, 'drei Tickets');
+
+// --- Vertippte E-Mail im Fragebogen: Person darf NICHT doppelt zählen ------
+assert.equal(ds.counts.leads, 5, 'so viele Leads wie Zeilen im Lead-Tab, keine Geister-Zeile');
+const dunja = ds.leads.filter((l) => l.name === 'Dunja Jenni');
+assert.equal(dunja.length, 1, 'Dunja steht genau einmal im Dashboard');
+assert.equal(dunja[0].email, 'dunjavoegeli@hotmail.com', 'die E-Mail aus dem Lead-Tab gewinnt');
+assert.equal(dunja[0].hasTicket, true, 'Fragebogen über den Namen zugeordnet');
+assert.equal(dunja[0].quality.tier, 'A', '3.000–3.999 € -> A');
 
 const anna = ds.leads.find((l) => l.email === 'anna@example.com');
 assert.equal(anna.hasTicket, false, 'Lead ohne Umfrage bleibt Lead');
@@ -146,14 +158,14 @@ assert.equal(scoreOf({ income: 'Über 5.000 €', employment: 'Rentner', urgency
 // Der angezeigte Wert ist der Durchschnitt der Noten: ein A und ein B = 85 %
 const scoredLeads = ds.leads.filter((l) => l.quality);
 const schnitt = Math.round(scoredLeads.reduce((sum, l) => sum + l.quality.score, 0) / scoredLeads.length);
-assert.equal(schnitt, 85, 'ein A (100) und ein B (70) ergeben 85 % Lead-Qualität');
+assert.equal(schnitt, 90, 'zwei A (100) und ein B (70) ergeben 90 % Lead-Qualität');
 
 // --- Qualifiziert zählt nur A: die beiden echten Leads aus dem Sheet ------
 assert.deepEqual(qualifiedTiersOf(scoring), ['A'], 'nur A gilt als qualifiziert');
 const tickets = ds.leads.filter((l) => l.hasTicket);
 const qualified = tickets.filter((l) => qualifiedTiersOf(scoring).includes(l.quality?.tier));
-assert.equal(tickets.length, 2, 'zwei Gold-Tickets');
-assert.equal(qualified.length, 1, 'nur der A-Lead zählt als qualifiziert, der B-Lead nicht');
+assert.equal(tickets.length, 3, 'drei Gold-Tickets');
+assert.equal(qualified.length, 2, 'nur die A-Leads zählen als qualifiziert, der B-Lead nicht');
 
 // Disqualifikation greift auch ohne Einkommens-Angabe
 assert.equal(tierOf({ employment: 'Rentner' }), 'D', 'Rentner ohne Einkommens-Angabe -> D');
@@ -164,4 +176,5 @@ console.log('✓ Projekt-Konfiguration passt zum Sheet');
 console.log(`  ${PROJECT.name} | Ticket-Begriff: ${PROJECT.labels.ticket.many} | Leads: ${ds.counts.leads}, Tickets: ${ds.counts.tickets}`);
 console.log('  Einstufung: über 3.000 € -> A · Mittelfeld mit Kaufsignal -> B · Mittelfeld ohne -> C · unter 2.000 €/Rentner/Ü60 -> D');
 console.log('  (alle Kombinationen aus Einkommen x Beruf x Dringlichkeit x Alter geprüft)');
-console.log(`  Noten-Skala: D = 0 % · C = 40 % · B = 70 % · A = 100 % · Schnitt der echten Leads: ${schnitt} %`);
+console.log(`  Noten-Skala: D = 0 % · C = 40 % · B = 70 % · A = 100 % · Schnitt: ${schnitt} %`);
+console.log('  Vertippte E-Mail im Fragebogen wird über den Namen zugeordnet, keine Doppelzählung');

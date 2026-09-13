@@ -115,6 +115,24 @@ trifft also den Config-Eintrag `"monatliches einkommen"`.
 Bei den `columns` ist jeder Wert eine **Liste** – der erste nicht-leere Treffer
 gewinnt. Praktisch für Sheets, in denen eine Spalte mal so und mal anders heißt.
 
+### Zwei Reiter, zwei Zählungen
+
+Lead-Tab und Fragebogen-Tab sind **eigenständig**. Die Lead-Anzahl entspricht
+exakt den Zeilen im Lead-Tab, die Ticket-Anzahl exakt den Zeilen im
+Fragebogen-Tab. Es wird nichts zusammengeführt und nichts dedupliziert.
+
+Beide Reiter tragen ihre eigenen UTM-Spalten und werden getrennt auf Kampagne,
+Anzeigengruppe und Creative heruntergebrochen. Ein Ticket zählt also dort, wo
+es entstanden ist, nicht dort, wo die Person mal Lead war.
+
+Die E-Mail wird nur für die **Anzeige** genutzt: passt sie, erscheinen die
+Fragebogen-Antworten beim Lead in der Leadliste und die Zeile bekommt ein
+Ticket-Badge. Passt sie nicht (Vertipper im Formular), bleibt die Anzeige leer.
+An den Zahlen ändert das nichts.
+
+Eine Ticket-Spalte IM Lead-Tab (etwa "VIP-Ticket geholt am") erzeugt daher
+kein Ticket. Gezählt wird ausschließlich der Fragebogen-Tab.
+
 ### Fragebogen und Scoring
 
 Die Schlüssel unter `sheet.answers` verbinden Sheet und Bewertungsmodell:

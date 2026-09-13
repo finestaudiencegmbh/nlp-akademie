@@ -14,7 +14,7 @@ function buildCols({ hasTickets, hasQuality, ticketLabel }) {
     { key: 'creative', label: 'Creative', sort: (l) => l.creative },
     { key: 'placement', label: 'Placement', sort: (l) => l.placement },
   ];
-  if (hasTickets) cols.push({ key: 'ticket', label: ticketLabel, sort: (l) => (l.hasTicket ? 1 : 0) });
+  if (hasTickets) cols.push({ key: 'ticket', label: ticketLabel, sort: (l) => (l.linkedTicket ? 1 : 0) });
   if (hasQuality) cols.push({ key: 'quality', label: 'Qualität', sort: (l) => l.quality?.score ?? -1 });
   return cols;
 }
@@ -49,7 +49,10 @@ function exportCsv(leads, { slug, features, answers, ticketLabel }) {
   URL.revokeObjectURL(url);
 }
 
-export default function LeadsTable({ leads, tiers }) {
+export default function LeadsTable({ leads: allRows, tiers }) {
+  // Die Leadliste zeigt die Zeilen aus dem Lead-Tab. Fragebogen-Zeilen sind
+  // eigene Datensätze (Gold-Tickets) und würden die Liste sonst verdoppeln.
+  const leads = useMemo(() => allRows.filter((l) => l.isLead !== false), [allRows]);
   const project = useProject();
   const { features, labels, answers, slug } = project;
   const { hasTickets, hasQuality } = features;
@@ -118,7 +121,7 @@ export default function LeadsTable({ leads, tiers }) {
                   <td className="trunc sec" data-label="Creative" title={l.creative}>{l.creative}</td>
                   <td className="trunc sec" data-label="Placement" title={l.placement}>{l.placement}</td>
                   {hasTickets && (
-                    <td className="sec" data-label={T.short}>{l.hasTicket ? <span className="pill vip">{T.short}</span> : <span className="muted">–</span>}</td>
+                    <td className="sec" data-label={T.short}>{l.linkedTicket ? <span className="pill vip">{T.short}</span> : <span className="muted">–</span>}</td>
                   )}
                   {hasQuality && (
                     <td data-label="Qualität"><QualityBadge quality={l.quality} tiers={tiers} /></td>

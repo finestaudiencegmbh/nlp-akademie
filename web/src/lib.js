@@ -145,6 +145,9 @@ export function aggregate(leads, dimKey, overviewByAdset, fb, filters = {}, opts
     return groups.get(k);
   };
   for (const l of leads) {
+    // Nur Zeilen aus dem Lead-Tab zählen als Leads; Fragebogen-Zeilen sind
+    // eigene Datensätze und werden unten als Tickets gezählt.
+    if (l.isLead === false) continue;
     const g = ensure(l[dimKey] || '(unbekannt)');
     g.leads.push(l);
     if (l.adset) g.adsets.add(l.adset);
@@ -228,14 +231,17 @@ function makeRow({ key, total, tickets, avgQuality, qualified, spend, impression
 
 export function computeKpis(leads, overviewByAdset, fb, features = {}, qualifiedTiers = ['A', 'B']) {
   const { hasTickets = true, hasQuality = true } = features;
-  const total = leads.length;
-  const paid = leads.filter((l) => l.sourceType === 'paid');
-  const organic = leads.filter((l) => l.sourceType !== 'paid');
+  // Lead-Zeilen und Fragebogen-Zeilen sind getrennte Datensätze
+  const leadRows = leads.filter((l) => l.isLead !== false);
+  const total = leadRows.length;
+  const paid = leadRows.filter((l) => l.sourceType === 'paid');
+  const organic = leadRows.filter((l) => l.sourceType !== 'paid');
 
   // Tickets getrennt nach Quelle
-  const paidTickets = hasTickets ? paid.filter((l) => l.hasTicket) : [];
-  const organicTickets = hasTickets ? organic.filter((l) => l.hasTicket) : [];
-  const ticketLeads = hasTickets ? leads.filter((l) => l.hasTicket) : [];
+  const ticketRows = hasTickets ? leads.filter((l) => l.hasTicket) : [];
+  const paidTickets = ticketRows.filter((l) => l.sourceType === 'paid');
+  const organicTickets = ticketRows.filter((l) => l.sourceType !== 'paid');
+  const ticketLeads = ticketRows;
 
   // Qualität: über alle bewerteten Tickets (Antworten kommen aus dem Sheet,
   // unabhängig von der Quelle)
@@ -280,11 +286,12 @@ export function computeKpis(leads, overviewByAdset, fb, features = {}, qualified
 export function leadsByDay(leads) {
   const m = new Map();
   for (const l of leads) {
-    const day = dayKey(l.wonAt);
+    const isLeadRow = l.isLead !== false;
+    const day = dayKey(isLeadRow ? l.wonAt : l.ticketAt);
     if (!day) continue;
     if (!m.has(day)) m.set(day, { date: day, leads: 0, tickets: 0 });
     const e = m.get(day);
-    e.leads += 1;
+    if (isLeadRow) e.leads += 1;
     if (l.hasTicket) e.tickets += 1;
   }
   return [...m.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
@@ -323,12 +330,14 @@ export function leadsByTime(leads, hourlyDay = null) {
   if (!hourlyDay) return leadsByDay(leads);
   const buckets = emptyMinuteBuckets(hourlyDay);
   for (const l of leads) {
-    if (dayKey(l.wonAt) !== hourlyDay) continue;
-    const m = minuteOf(l.wonAt);
+    const isLeadRow = l.isLead !== false;
+    const stamp = isLeadRow ? l.wonAt : l.ticketAt;
+    if (dayKey(stamp) !== hourlyDay) continue;
+    const m = minuteOf(stamp);
     if (m == null) continue;
-    buckets[m].leads += 1;
+    if (isLeadRow) buckets[m].leads += 1;
     if (l.hasTicket) buckets[m].tickets += 1;
-    if (l.quality) { buckets[m].scoreSum += l.quality.score; buckets[m].scored += 1; }
+    if (l.hasTicket && l.quality) { buckets[m].scoreSum += l.quality.score; buckets[m].scored += 1; }
   }
   return finalizeMinuteBuckets(buckets);
 }
@@ -340,7 +349,7 @@ export function minuteSeriesFromEvents(events, day) {
   for (const e of events || []) {
     const b = buckets[e.m];
     if (!b) continue;
-    b.leads += 1;
+    if (e.lead !== false) b.leads += 1;
     if (e.ticket) b.tickets += 1;
     if (e.quality != null) { b.scoreSum += e.quality; b.scored += 1; }
   }
@@ -357,7 +366,7 @@ export const fmtClock = (key) => String(key ?? '').slice(11, 16);
 export function cplByDay(spendDaily, leads) {
   const paidPerDay = new Map();
   for (const l of leads) {
-    if (l.sourceType !== 'paid') continue;
+    if (l.isLead === false || l.sourceType !== 'paid') continue;
     const day = dayKey(l.wonAt);
     if (!day) continue;
     paidPerDay.set(day, (paidPerDay.get(day) || 0) + 1);
@@ -378,7 +387,7 @@ export function qualityByDay(leads) {
   const m = new Map();
   for (const l of leads) {
     if (!l.hasTicket || !l.quality) continue;
-    const day = dayKey(l.wonAt);
+    const day = dayKey(l.ticketAt || l.wonAt);
     if (!day) continue;
     if (!m.has(day)) m.set(day, { date: day, sum: 0, n: 0 });
     const e = m.get(day);

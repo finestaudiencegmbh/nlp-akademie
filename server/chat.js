@@ -21,8 +21,10 @@ export function buildContext(payload, filtered, features = {}, qualifiedTiers = 
   const round = (n) => (n == null ? null : Math.round(n * 100) / 100);
   const leads = filtered || payload.leads || [];
 
-  const paid = leads.filter((l) => l.sourceType === 'paid');
-  const organic = leads.filter((l) => l.sourceType !== 'paid');
+  // Lead-Zeilen und Fragebogen-Zeilen sind getrennte Datensätze
+  const leadRows = leads.filter((l) => l.isLead !== false);
+  const paid = leadRows.filter((l) => l.sourceType === 'paid');
+  const organic = leadRows.filter((l) => l.sourceType !== 'paid');
   const tickets = hasTickets ? leads.filter((l) => l.hasTicket) : [];
   const scored = tickets.filter((l) => l.quality);
   const qualified = tickets.filter((l) => qualifiedTiers.includes(l.quality?.tier));
@@ -43,7 +45,7 @@ export function buildContext(payload, filtered, features = {}, qualifiedTiers = 
       }
       return m.get(k);
     };
-    for (const l of leads) ensure(l[key] || '(unbekannt)').leads += 1;
+    for (const l of leadRows) ensure(l[key] || '(unbekannt)').leads += 1;
     for (const l of leads) {
       if (!hasTickets || !l.hasTicket) continue;
       const e = ensure((tKey && l[tKey]) ? l[tKey] : (l[key] || '(unbekannt)'));
@@ -59,7 +61,7 @@ export function buildContext(payload, filtered, features = {}, qualifiedTiers = 
     stand: payload.fetchedAt,
     quelle: payload.source,
     summe: {
-      leads_gesamt: leads.length,
+      leads_gesamt: leadRows.length,
       leads_bezahlt: paid.length,
       leads_organisch: organic.length,
       ...(hasTickets ? { tickets: tickets.length } : {}),

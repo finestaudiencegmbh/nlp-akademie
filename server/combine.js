@@ -161,7 +161,9 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
     creative: l.ticketCreative ?? l.creative,
   });
   for (const l of leads || []) {
-    if (l.sourceType === 'paid') {
+    // Leads zählen nur die Zeilen aus dem Lead-Tab (isLead). Fragebogen-Zeilen
+    // sind eigene Datensätze und zählen ausschließlich als Tickets.
+    if (l.isLead !== false && l.sourceType === 'paid') {
       for (const dim of ['campaign', 'adset', 'creative']) {
         if (!normKey(leafName(dim, l))) continue;
         const k = pathKey(dim, l);
@@ -331,11 +333,11 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
 
   const leadDay = new Map();
   for (const l of leads || []) {
-    const day = (l.wonAt || '').slice(0, 10);
+    const day = ((l.isLead !== false ? l.wonAt : l.ticketAt) || '').slice(0, 10);
     if (!day) continue;
     if (!leadDay.has(day)) leadDay.set(day, { date: day, leads: 0, tickets: 0 });
     const e = leadDay.get(day);
-    e.leads += 1;
+    if (l.isLead !== false) e.leads += 1;
     if (hasTickets && l.hasTicket) e.tickets += 1;
   }
   const leadsByDay = [...leadDay.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
@@ -445,8 +447,8 @@ function buildDailyByEntity(dailyEntities, leads, features = {}, qualifiedTiers 
     return days.get(date);
   };
   for (const l of leads) {
-    // Leads nach Lead-Dimensionen (Lead-Datum)
-    if (l.sourceType === 'paid') {
+    // Leads nach Lead-Dimensionen (Lead-Datum) – nur Zeilen aus dem Lead-Tab
+    if (l.isLead !== false && l.sourceType === 'paid') {
       const day = (l.wonAt || '').slice(0, 10);
       if (day) {
         for (const dim of dims) {
@@ -514,13 +516,15 @@ function buildIntradayByEntity(leads, day, features = {}) {
   const out = { campaign: {}, adset: {}, creative: {} };
   for (const l of leads) {
     if (l.sourceType !== 'paid') continue;
-    if ((l.wonAt || '').slice(0, 10) !== day) continue;
-    const h = Number(String(l.wonAt).slice(11, 13));
-    const min = Number(String(l.wonAt).slice(14, 16));
+    // Lead-Zeilen nach Lead-Zeitpunkt, Fragebogen-Zeilen nach Fragebogen-Zeitpunkt
+    const stamp = l.isLead !== false ? l.wonAt : l.ticketAt;
+    if ((stamp || '').slice(0, 10) !== day) continue;
+    const h = Number(String(stamp).slice(11, 13));
+    const min = Number(String(stamp).slice(14, 16));
     if (!Number.isFinite(h) || !Number.isFinite(min)) continue;
     const m = h * 60 + min;
     if (!(m >= 0 && m < 1440)) continue;
-    const ev = { m, ticket: hasTickets && Boolean(l.hasTicket), quality: hasQuality && l.quality ? l.quality.score : null };
+    const ev = { m, lead: l.isLead !== false, ticket: hasTickets && Boolean(l.hasTicket), quality: hasQuality && l.quality ? l.quality.score : null };
     for (const dim of dims) {
       if (!normKey(l[dim])) continue;
       const key = pathKey(dim, l);

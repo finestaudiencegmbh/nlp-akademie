@@ -31,7 +31,9 @@ function RankList({ title, subtitle, items, color = '#a78bfa' }) {
   );
 }
 
-export default function SourcesView({ leads }) {
+export default function SourcesView({ leads: allRows }) {
+  // Quellen-Auswertung über die Lead-Zeilen (nicht über die Fragebogen-Zeilen)
+  const leads = allRows.filter((l) => l.isLead !== false);
   const bySource = groupCount(leads, (l) => l.sourceRaw, { emptyLabel: '(direkt)' });
   const byCampaign = groupCount(leads, (l) => l.campaignRaw, { limit: 8, emptyLabel: '(direkt)' });
   const byContent = groupCount(leads, (l) => l.mediumRaw, { limit: 8, emptyLabel: '(direkt)' });

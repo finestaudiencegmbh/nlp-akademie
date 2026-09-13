@@ -54,28 +54,41 @@ assert.equal(parsed.leads.length, 3, 'Summenzeile ignoriert, 3 echte Leads');
 assert.equal(parsed.tickets.length, 1, 'Ticket-Duplikat entfernt');
 
 const ds = buildDataset(parsed, cfg);
-const rebecca = ds.leads.find((l) => l.email === 'schiessl.rebecca@gmail.com');
-assert.ok(rebecca, 'Lead + Ticket über E-Mail gejoint');
-assert.equal(rebecca.hasTicket, true);
+
+// Die beiden Tabs zählen getrennt: Leads = Zeilen im Lead-Tab,
+// Tickets = Zeilen im Ticket-/Fragebogen-Tab.
+assert.equal(ds.counts.leads, 3, 'so viele Leads wie Zeilen im Lead-Tab');
+assert.equal(ds.counts.tickets, 1, 'so viele Tickets wie Zeilen im Ticket-Tab');
+
+const leadRows = ds.leads.filter((l) => l.isLead);
+const ticketRows = ds.leads.filter((l) => l.hasTicket);
+assert.equal(leadRows.length, 3);
+assert.equal(ticketRows.length, 1);
+assert.equal(ticketRows[0].isLead, false, 'eine Ticket-Zeile ist kein Lead');
+
+const rebecca = leadRows.find((l) => l.email === 'schiessl.rebecca@gmail.com');
+assert.ok(rebecca, 'Lead-Zeile vorhanden');
+assert.equal(rebecca.hasTicket, false, 'eine Lead-Zeile zählt nie als Ticket');
+assert.equal(rebecca.linkedTicket, true, 'Fragebogen über die E-Mail nur zur Anzeige verknüpft');
 assert.equal(rebecca.sourceType, 'paid');
 assert.equal(rebecca.campaign, 'J&P | MMV 15.06.-18.06. | ABO | 260526');
 assert.equal(rebecca.placement, 'Facebook Mobile Feed');
-assert.ok(rebecca.quality && rebecca.quality.score > 0, 'Qualität berechnet');
+assert.ok(rebecca.answers, 'Antworten zur Anzeige übernommen');
 
-const max = ds.leads.find((l) => l.email === 'max@example.com');
+const max = leadRows.find((l) => l.email === 'max@example.com');
 assert.equal(max.sourceType, 'organic', 'einzelnes Token = organisch');
-assert.equal(max.hasTicket, false);
+assert.equal(max.linkedTicket, false);
 
-// Lead mit "VIP-Ticket geholt am", aber ohne Antworten-Zeile
-const lisa = ds.leads.find((l) => l.email === 'lisa@example.com');
-assert.equal(lisa.hasTicket, true, 'Ticket über "VIP-Ticket geholt am" erkannt');
+// Lead mit Datum in der Ticket-Spalte, aber OHNE Zeile im Ticket-Tab:
+// zählt nicht als Ticket – gezählt wird ausschließlich der Ticket-Tab.
+const lisa = leadRows.find((l) => l.email === 'lisa@example.com');
+assert.equal(lisa.hasTicket, false, 'kein Ticket ohne Zeile im Ticket-Tab');
+assert.equal(lisa.linkedTicket, false);
 assert.equal(lisa.creative, 'LP 2 - Static 19', 'Creative aus der Lead-Zeile');
-assert.equal(lisa.quality, null, 'ohne Antworten keine Qualität');
 
-// Ticket-Zuordnung auf Creative-Ebene (Kernfall des gemeldeten Bugs)
-const byCreative = (key) => ds.leads.filter((l) => l.creative === key && l.hasTicket).length;
-assert.equal(byCreative('LP 2 - Static 19'), 1, 'Ticket dem Creative zugeordnet');
-assert.equal(ds.counts.tickets, 2, 'beide Ticket-Holder gezählt');
+// Das Ticket wird über seine EIGENEN UTM-Werte attribuiert
+assert.equal(ticketRows[0].creative, 'LP 1 - Static 16', 'Creative aus der Ticket-Zeile');
+assert.ok(ticketRows[0].quality && ticketRows[0].quality.score > 0, 'Qualität am Ticket berechnet');
 
 // Spend-Zuordnung über Anzeigengruppe
 const spendKey = 'j&p | lp 1 | broad | dach | w | 30-55';

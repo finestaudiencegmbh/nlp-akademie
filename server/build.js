@@ -4,20 +4,6 @@ import { loadCampaignConfig } from './campaigns.js';
 const collapse = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
 
 /**
- * Personen-Schlüssel aus Vor- und Nachname: klein, ohne Akzente, Whitespace
- * kollabiert. Zweiter Weg, um Lead und Fragebogen derselben Person zu
- * verbinden, wenn die E-Mail auseinanderläuft (Vertipper im Formular).
- */
-const nameKey = (firstName, lastName) => {
-  const n = collapse(`${firstName ?? ''} ${lastName ?? ''}`)
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-  // Nur verwenden, wenn Vor- UND Nachname da sind – sonst wären zu viele gleich.
-  return n.split(' ').filter(Boolean).length >= 2 ? n : '';
-};
-
-/**
  * Welcher UTM-Parameter trägt welche Dimension? Hängt am URL-Schema des
  * Werbekontos und steht daher in project.config.json (sheet.utmRoles).
  * Default = bisheriges Schema (source = Anzeigengruppe, medium = Creative).
@@ -132,104 +118,58 @@ export function buildDataset({ leads, tickets, overview }, cfg, features = {}, u
     return { paid: true, campaign: rawCampaign, adset: rawAdset, creative: rawCreative || unattribLabel };
   };
 
-  // Antworten/Qualität aus dem Fragebogen-Tab indizieren (zum Anreichern der
-  // Lead-Zeilen; verändert NICHT die Lead-Anzahl). Zwei Schlüssel:
-  //   1. E-Mail – der saubere Weg
-  //   2. Vor- + Nachname – Notnagel, wenn sich jemand im Formular vertippt
-  //      (z. B. "dunjavoegeöi@" statt "dunjavoegeli@"). Ohne diesen Fallback
-  //      würde die Fragebogen-Zeile als eigene Person gezählt und die Person
-  //      stünde doppelt im Dashboard.
+  // Die beiden Tabs sind EIGENSTÄNDIG:
+  //   Lead-Tab      -> ein Datensatz je Zeile, zählt als Lead
+  //   Fragebogen-Tab -> ein Datensatz je Zeile, zählt als Ticket
+  // Es wird NICHT zusammengeführt und nichts dedupliziert: Die Lead-Anzahl
+  // entspricht exakt den Zeilen im Lead-Tab, die Ticket-Anzahl exakt den Zeilen
+  // im Fragebogen-Tab. Beide werden über ihre EIGENEN UTM-Spalten attribuiert.
+  //
+  // Die E-Mail wird nur für die ANZEIGE genutzt: passt sie, erscheinen die
+  // Fragebogen-Antworten beim Lead in der Leadliste. Das ändert keine Zahl.
   const ticketByEmail = new Map();
-  const ticketByName = new Map();
   for (const t of (hasTickets ? tickets : [])) {
     for (const e of [t.email, t.emailTypeform]) {
       if (e && !ticketByEmail.has(e)) ticketByEmail.set(e, t);
     }
-    const nk = nameKey(t.firstName, t.lastName);
-    if (nk && !ticketByName.has(nk)) ticketByName.set(nk, t);
   }
-  // Fragebogen-Zeilen, die in Schritt 1 einer Lead-Zeile zugeordnet wurden –
-  // sie dürfen in Schritt 2 nicht nochmal als eigener Datensatz auftauchen.
-  const usedTicketRows = new Set();
 
-  // 1) Jede Lead-Zeile = ein Datensatz (KEIN Dedup, auch ohne E-Mail). Damit
-  //    entspricht die Lead-Anzahl exakt den Zeilen im Sheet.
-  //    ABER: Ein Ticket wird nur EINMAL gewertet. Kommt dieselbe Person mehrfach
-  //    als Lead rein (Re-Optin / Doppelzeile), beansprucht die ERSTE passende
-  //    Zeile das Ticket; weitere Zeilen bleiben Leads, zählen aber nicht erneut
-  //    als Ticket. Identität = Funnelcockpit-E-Mail (Fallback Typeform), exakt
-  //    wie im Tickets-Tab.
   const recs = [];
-  const seenLeadEmails = new Set();
-  const claimedTickets = new Set();
+
+  // 1) Lead-Zeilen
   for (const l of leads) {
     const email = l.email || '';
-    if (email) seenLeadEmails.add(email);
-    let t = email ? ticketByEmail.get(email) : null;
-    let matchedByName = false;
-    if (!t) {
-      const nk = nameKey(l.firstName, l.lastName);
-      const byName = nk ? ticketByName.get(nk) : null;
-      // Nur übernehmen, wenn die Fragebogen-Zeile noch frei ist und ihre E-Mail
-      // zu KEINER anderen Lead-Zeile gehört (sonst würde man fremd zuordnen).
-      if (byName && !usedTicketRows.has(byName)) {
-        t = byName;
-        matchedByName = true;
-      }
-    }
-    if (t) usedTicketRows.add(t);
-    // Kanonische Ticket-Identität (für die Einmal-Wertung). Bei Namens-Treffer
-    // zählt die Lead-E-Mail, damit zwei Schreibweisen nicht doppelt zählen.
-    const identity = (matchedByName ? email : t?.email) || email;
-    // Ohne Ticket-Feature gibt es keine zweite Stufe – auch eine (evtl. noch
-    // vorhandene) Ticket-Spalte in der Lead-Zeile wird dann ignoriert.
-    const isCandidate = hasTickets && (Boolean(t) || Boolean(l.ticketAt));
-    let isTicketRow = false;
-    if (isCandidate) {
-      if (!identity) {
-        isTicketRow = true; // keine E-Mail -> nicht dedupierbar, einzeln werten
-      } else if (!claimedTickets.has(identity)) {
-        claimedTickets.add(identity);
-        isTicketRow = true;
-      }
-    }
+    const t = email ? ticketByEmail.get(email) : null; // nur zur Anreicherung
     recs.push({
+      isLead: true,
+      hasTicket: false,
+      // Nur fürs Auge: markiert in der Leadliste, wer den Fragebogen ausgefüllt
+      // hat. Gezählt werden die Tickets aus dem Fragebogen-Tab (siehe unten).
+      linkedTicket: Boolean(t),
       email,
-      firstName: l.firstName || t?.firstName || '',
-      lastName: l.lastName || t?.lastName || '',
+      firstName: l.firstName || '',
+      lastName: l.lastName || '',
       phone: t?.phone || '',
       wonAt: l.wonAt,
-      // Ticket-Status aus dem Tickets-Tab (Typeform): jemand IST ein Ticket,
-      // sobald eine zugehörige Antwortzeile existiert (E-Mail-Match über
-      // Funnelcockpit- ODER Typeform-Adresse) – aber nur einmal je Person.
-      ticketAt: isTicketRow ? (l.ticketAt || t?.at || null) : null,
-      hasTicket: isTicketRow,
-      utm: collapse(l.utm.source) ? { ...l.utm } : (t ? { ...t.utm } : { ...l.utm }),
-      // UTM des TICKETS selbst (für ticket-eigene Attribution) – aus dem Tickets-
-      // Tab, sonst (Spalte ohne Typeform-Match) die Lead-UTM.
-      ticketUtm: isTicketRow ? (t && t.utm ? { ...t.utm } : { ...l.utm }) : null,
+      ticketAt: null,
+      utm: { ...l.utm },
+      ticketUtm: null,
       answers: hasQuality ? (t?.answers || null) : null,
     });
   }
 
-  // 2) VIP-Tickets, deren E-Mail in KEINER Lead-Zeile vorkommt, als eigene
-  //    Datensätze ergänzen (z. B. nur im VIP-Tab erfasste Personen).
+  // 2) Fragebogen-Zeilen – eigene Datensätze, zählen NICHT als Leads
   for (const t of (hasTickets ? tickets : [])) {
-    if (usedTicketRows.has(t)) continue; // schon über E-Mail oder Namen zugeordnet
-    // mit einer Lead-Zeile verknüpft? (beide Mail-Varianten prüfen)
-    if ((t.email && seenLeadEmails.has(t.email)) || (t.emailTypeform && seenLeadEmails.has(t.emailTypeform))) continue;
-    const identity = t.email || t.emailTypeform || '';
-    if (identity && claimedTickets.has(identity)) continue; // schon gewertet
-    if (identity) claimedTickets.add(identity);
-    const email = t.email || t.emailTypeform || '';
     recs.push({
-      email,
+      isLead: false,
+      hasTicket: true,
+      linkedTicket: true,
+      email: t.email || t.emailTypeform || '',
       firstName: t.firstName || '',
       lastName: t.lastName || '',
       phone: t.phone || '',
       wonAt: t.at || null,
       ticketAt: t.at || null,
-      hasTicket: true,
       utm: { ...t.utm },
       ticketUtm: { ...t.utm },
       answers: hasQuality ? (t.answers || null) : null,
@@ -243,7 +183,9 @@ export function buildDataset({ leads, tickets, overview }, cfg, features = {}, u
     const ld = dimsFor(r.utm);
     const paid = ld.paid;
     const { campaign, adset, creative } = ld;
-    const quality = hasQuality && r.hasTicket ? computeQuality(r.answers, cfg) : null;
+    // Qualität hängt an den Fragebogen-Antworten. Auf einer Lead-Zeile ist sie
+    // reine Anzeige (die Kennzahlen rechnen ausschließlich mit den Tickets).
+    const quality = hasQuality ? computeQuality(r.answers, cfg) : null;
 
     // Ticket-Dimensionen aus der TICKET-EIGENEN UTM (damit ein Ticket dort zählt,
     // wo es wirklich entstand – nicht in jeder Kampagne, in der die Person Lead war)
@@ -264,7 +206,9 @@ export function buildDataset({ leads, tickets, overview }, cfg, features = {}, u
       phone: r.phone,
       wonAt: r.wonAt,
       ticketAt: r.ticketAt,
+      isLead: r.isLead,
       hasTicket: r.hasTicket,
+      linkedTicket: r.linkedTicket,
       sourceType: paid ? 'paid' : 'organic',
       campaign,
       adset,
@@ -289,7 +233,7 @@ export function buildDataset({ leads, tickets, overview }, cfg, features = {}, u
     if (!overviewByAdset.has(k)) overviewByAdset.set(k, o);
   }
 
-  const matchedAdsets = new Set(records.filter((r) => r.sourceType === 'paid').map((r) => r.adset.toLowerCase()));
+  const matchedAdsets = new Set(records.filter((r) => r.isLead && r.sourceType === 'paid').map((r) => r.adset.toLowerCase()));
   for (const o of overview) {
     if (!matchedAdsets.has(o.adset.toLowerCase())) {
       // Übersicht kennt eine Anzeigengruppe, zu der (noch) keine Leads mit
@@ -303,10 +247,10 @@ export function buildDataset({ leads, tickets, overview }, cfg, features = {}, u
     overviewByAdset: Object.fromEntries(overviewByAdset),
     warnings,
     counts: {
-      leads: records.length,
-      paidLeads: records.filter((r) => r.sourceType === 'paid').length,
+      leads: records.filter((r) => r.isLead).length,
+      paidLeads: records.filter((r) => r.isLead && r.sourceType === 'paid').length,
       tickets: records.filter((r) => r.hasTicket).length,
-      scored: records.filter((r) => r.quality).length,
+      scored: records.filter((r) => r.hasTicket && r.quality).length,
     },
   };
 }

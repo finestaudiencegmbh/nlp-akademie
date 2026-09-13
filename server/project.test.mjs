@@ -61,46 +61,57 @@ assert.equal(parsed.tickets[0].answers.urgency, 'In den nächsten Wochen', 'Frag
 assert.equal(parsed.tickets[0].phone, '41796000000', 'Handynummer gemappt');
 
 const ds = buildDataset(parsed, scoring, PROJECT.features, PROJECT.sheet.utmRoles);
+const leadRows = ds.leads.filter((l) => l.isLead);
+const ticketRows = ds.leads.filter((l) => l.hasTicket);
 
 // --- UTM-Rollen: Kampagne aus utm_campaign, Anzeigengruppe aus utm_term,
 //     Creative aus utm_content -----------------------------------------------
-const roman = ds.leads.find((l) => l.email === 'roman@example.com');
+const roman = leadRows.find((l) => l.email === 'roman@example.com');
 assert.equal(roman.sourceType, 'paid', 'utm_medium=paid -> bezahlt');
 assert.equal(roman.campaign, 'JP | RML 14. & 15.10. | WARM UP | CBO | 101026', 'Kampagne aus utm_campaign');
 assert.equal(roman.adset, 'JP | Broad | CH | 30+', 'Anzeigengruppe aus utm_term');
 assert.equal(roman.creative, 'Video Hook A', 'Creative aus utm_content');
 
-// --- Zweite Stufe: Umfrage-Zeile = Gold-Ticket, über die E-Mail gejoint -----
-assert.equal(roman.hasTicket, true, 'Umfrage-Zeile zählt als Gold-Ticket');
-assert.equal(roman.ticketAt, '2026-09-11T22:42:45.000Z', 'Ticket-Zeitpunkt aus dem Umfrage-Tab');
-assert.equal(ds.counts.tickets, 3, 'drei Tickets');
+// --- Die beiden Reiter zählen getrennt ------------------------------------
+assert.equal(ds.counts.leads, 5, 'so viele Leads wie Zeilen im Lead-Tab');
+assert.equal(ds.counts.tickets, 3, 'so viele Gold-Tickets wie Zeilen im Umfrage-Tab');
+assert.equal(leadRows.length, 5);
+assert.equal(ticketRows.length, 3);
 
-// --- Vertippte E-Mail im Fragebogen: Person darf NICHT doppelt zählen ------
-assert.equal(ds.counts.leads, 5, 'so viele Leads wie Zeilen im Lead-Tab, keine Geister-Zeile');
-const dunja = ds.leads.filter((l) => l.name === 'Dunja Jenni');
-assert.equal(dunja.length, 1, 'Dunja steht genau einmal im Dashboard');
-assert.equal(dunja[0].email, 'dunjavoegeli@hotmail.com', 'die E-Mail aus dem Lead-Tab gewinnt');
-assert.equal(dunja[0].hasTicket, true, 'Fragebogen über den Namen zugeordnet');
-assert.equal(dunja[0].quality.tier, 'A', '3.000–3.999 € -> A');
+// Eine Lead-Zeile zählt NIE als Ticket; die E-Mail verknüpft nur für die Anzeige
+assert.equal(roman.hasTicket, false, 'Lead-Zeile ist kein Ticket');
+assert.equal(roman.linkedTicket, true, 'Fragebogen über die E-Mail zur Anzeige verknüpft');
+const romanTicket = ticketRows.find((l) => l.email === 'roman@example.com');
+assert.equal(romanTicket.ticketAt, '2026-09-11T22:42:45.000Z', 'Ticket-Zeitpunkt aus dem Umfrage-Tab');
+assert.equal(romanTicket.isLead, false, 'die Umfrage-Zeile ist kein Lead');
 
-const anna = ds.leads.find((l) => l.email === 'anna@example.com');
-assert.equal(anna.hasTicket, false, 'Lead ohne Umfrage bleibt Lead');
+// Vertippte E-Mail im Umfrage-Tab: zählt trotzdem als Gold-Ticket und legt
+// KEINEN zusätzlichen Lead an (die Reiter werden gar nicht erst abgeglichen).
+const dunjaLead = leadRows.filter((l) => l.name === 'Dunja Jenni');
+assert.equal(dunjaLead.length, 1, 'Dunja steht einmal in der Leadliste');
+assert.equal(dunjaLead[0].email, 'dunjavoegeli@hotmail.com', 'E-Mail aus dem Lead-Tab');
+assert.equal(dunjaLead[0].linkedTicket, false, 'kein Treffer über die abweichende E-Mail');
+const dunjaTicket = ticketRows.filter((l) => l.name === 'Dunja Jenni');
+assert.equal(dunjaTicket.length, 1, 'ihr Fragebogen zählt trotzdem als Gold-Ticket');
+assert.equal(dunjaTicket[0].quality.tier, 'A', '3.000–3.999 € -> A');
+
+const anna = leadRows.find((l) => l.email === 'anna@example.com');
+assert.equal(anna.linkedTicket, false, 'Lead ohne Umfrage bleibt reiner Lead');
 assert.equal(anna.creative, 'Static 2', 'zweites Creative getrennt attribuiert');
 
 // --- Organisch --------------------------------------------------------------
-const orga = ds.leads.find((l) => l.email === 'orga@example.com');
+const orga = leadRows.find((l) => l.email === 'orga@example.com');
 assert.equal(orga.sourceType, 'organic', 'ManyChat -> organisch');
 
 // --- Einstufung: die festgelegten Geschäftsregeln --------------------------
 // Roman: 2.000–2.999 € -> C, obwohl die Dringlichkeit hoch ist.
-const q = roman.quality;
+const q = romanTicket.quality;
 assert.ok(q, 'Qualität berechnet');
 assert.equal(q.breakdown.income, 40, 'Einkommen 2.000–2.999 € -> Stufe 0.4');
 assert.equal(q.tier, 'B', '2.000–2.999 € + hohe Dringlichkeit = B-Lead');
 
 // Beat: 3.000–3.999 €, sonst schwache Antworten -> trotzdem A.
-const beat = ds.leads.find((l) => l.email === 'beat@example.com');
-assert.equal(beat.hasTicket, true);
+const beat = ticketRows.find((l) => l.email === 'beat@example.com');
 assert.equal(beat.quality.breakdown.income, 100, 'Einkommen 3.000–3.999 € -> volle Stufe');
 assert.equal(beat.quality.tier, 'A', 'über 3.000 € = A-Lead, unabhängig von den übrigen Antworten');
 
@@ -156,15 +167,14 @@ assert.equal(scoreOf({ income: 'Unter 1.999 €', employment: 'Angestellt', urge
 assert.equal(scoreOf({ income: 'Über 5.000 €', employment: 'Rentner', urgency: 'Sofort' }), 0, 'Disqualifikation = 0 %');
 
 // Der angezeigte Wert ist der Durchschnitt der Noten: ein A und ein B = 85 %
-const scoredLeads = ds.leads.filter((l) => l.quality);
+const scoredLeads = ticketRows.filter((l) => l.quality);
 const schnitt = Math.round(scoredLeads.reduce((sum, l) => sum + l.quality.score, 0) / scoredLeads.length);
 assert.equal(schnitt, 90, 'zwei A (100) und ein B (70) ergeben 90 % Lead-Qualität');
 
 // --- Qualifiziert zählt nur A: die beiden echten Leads aus dem Sheet ------
 assert.deepEqual(qualifiedTiersOf(scoring), ['A'], 'nur A gilt als qualifiziert');
-const tickets = ds.leads.filter((l) => l.hasTicket);
-const qualified = tickets.filter((l) => qualifiedTiersOf(scoring).includes(l.quality?.tier));
-assert.equal(tickets.length, 3, 'drei Gold-Tickets');
+const qualified = ticketRows.filter((l) => qualifiedTiersOf(scoring).includes(l.quality?.tier));
+assert.equal(ticketRows.length, 3, 'drei Gold-Tickets');
 assert.equal(qualified.length, 2, 'nur die A-Leads zählen als qualifiziert, der B-Lead nicht');
 
 // Disqualifikation greift auch ohne Einkommens-Angabe
@@ -177,4 +187,4 @@ console.log(`  ${PROJECT.name} | Ticket-Begriff: ${PROJECT.labels.ticket.many} |
 console.log('  Einstufung: über 3.000 € -> A · Mittelfeld mit Kaufsignal -> B · Mittelfeld ohne -> C · unter 2.000 €/Rentner/Ü60 -> D');
 console.log('  (alle Kombinationen aus Einkommen x Beruf x Dringlichkeit x Alter geprüft)');
 console.log(`  Noten-Skala: D = 0 % · C = 40 % · B = 70 % · A = 100 % · Schnitt: ${schnitt} %`);
-console.log('  Vertippte E-Mail im Fragebogen wird über den Namen zugeordnet, keine Doppelzählung');
+console.log('  Lead-Tab und Umfrage-Tab werden getrennt gezählt, kein Abgleich zwischen den Reitern');

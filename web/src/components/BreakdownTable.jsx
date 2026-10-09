@@ -12,6 +12,17 @@ export default function BreakdownTable({ rows, dimLabel, onSelect, tiers, showAc
   const hasPaused = rows.some((r) => r.active === false);
   const visibleRows = onlyActive ? rows.filter((r) => r.active !== false) : rows;
 
+  // Elternpfad nur zeigen, wenn er etwas unterscheidet: gleicher Name mehrfach.
+  const showParent = useMemo(() => {
+    const seen = new Set();
+    return rows.some((r) => {
+      const k = String(r.key).toLowerCase();
+      if (seen.has(k)) return true;
+      seen.add(k);
+      return false;
+    });
+  }, [rows]);
+
   const hasSpend = rows.some((r) => r.spend != null);
   const hasImpressions = rows.some((r) => r.impressions != null);
   const hasOutbound = rows.some((r) => r.outboundClicks != null);
@@ -86,13 +97,17 @@ export default function BreakdownTable({ rows, dimLabel, onSelect, tiers, showAc
         </thead>
         <tbody>
           {sorted.map((r) => (
-            <tr key={r.key} className={`clickable ${r.active === false ? 'is-paused' : ''}`} onClick={() => onSelect?.(r.key)} title={r.active === false ? 'Pausiert' : 'Klicken, um danach zu filtern'}>
+            <tr key={r.id || r.key} className={`clickable ${r.active === false ? 'is-paused' : ''}`} onClick={() => onSelect?.(r.key)} title={r.active === false ? 'Pausiert' : 'Klicken, um danach zu filtern'}>
               {cols.map((c) => (
                 <td key={c.key} className={c.align === 'left' ? 'left' : 'num'} data-label={c.key === 'key' ? '' : c.label}>
                   {c.key === 'key' ? (
                     <div className="cell-name">
                       {r.active != null && <span className={`status-dot ${r.active ? 'on' : 'off'}`} />}
-                      <span className="cell-name-text" title={r.key}>{r.key}</span>
+                      <span className="cell-name-main">
+                        <span className="cell-name-text" title={r.key}>{r.key}</span>
+                        {/* Elternpfad: unterscheidet gleichnamige Anzeigengruppen/Creatives */}
+                        {r.parent && showParent && <span className="cell-parent" title={r.parent}>{r.parent}</span>}
+                      </span>
                       {r.active === false && <span className="paused-tag">pausiert</span>}
                     </div>
                   ) : (

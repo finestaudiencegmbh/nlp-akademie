@@ -125,37 +125,60 @@ function spendForAdsets(adsetNames, overviewByAdset) {
   return any ? sum : null;
 }
 
+// Dimensionen mit Hierarchie (Kampagne ▸ Anzeigengruppe ▸ Creative). Für sie
+// wird nach dem vollen PFAD gruppiert, nicht nach dem Namen – sonst würde ein
+// Creative, das in zwei Anzeigengruppen liegt, zu einer Zeile verschmelzen und
+// gute mit schlechter Leistung mischen.
+const PATH_DIMS = new Set(['campaign', 'adset', 'creative']);
+
 /**
  * Verdichtet die (gefilterten) Leads nach einer Dimension.
  * Spend/Impressionen/Klicks kommen – sofern vorhanden – aus den Facebook-
- * Daten (Supermetrics) je Dimension. Fällt darauf zurück: Adspend je
- * Anzeigengruppe aus der Sheet-Übersicht (nur Kampagne/Anzeigengruppe).
+ * Daten je Dimension. Fällt darauf zurück: Adspend je Anzeigengruppe aus der
+ * Sheet-Übersicht (nur Kampagne/Anzeigengruppe).
  */
 export function aggregate(leads, dimKey, overviewByAdset, fb, filters = {}, opts = {}) {
   const { addFbRows = true, features = {}, qualifiedTiers = ['A', 'B'] } = opts; // FB-only-Zeilen (pausierte/leere Kampagnen) ergänzen?
   const fbDim = addFbRows ? (fb?.byDim?.[dimKey] || null) : null;
+  const hierarchical = PATH_DIMS.has(dimKey);
   // Tickets werden nach ihrer EIGENEN Herkunft (Ticket-UTM) gezählt, nicht nach
   // der Lead-Zeile – sonst landet ein Ticket in jeder Kampagne, in der die Person
   // Lead war. Für Placement gibt es keine eigene Ticket-Dimension -> Lead-Dim.
   const TICKET_DIM = { campaign: 'ticketCampaign', adset: 'ticketAdset', creative: 'ticketCreative' };
   const tDimKey = TICKET_DIM[dimKey];
+  // Ticket-Sicht einer Zeile (eigene Herkunft, sonst Lead-Dimensionen)
+  const tView = (l) => ({
+    campaign: l.ticketCampaign ?? l.campaign,
+    adset: l.ticketAdset ?? l.adset,
+    creative: l.ticketCreative ?? l.creative,
+  });
+  // Gruppenschlüssel + Anzeigename + Elternpfad einer Zeile
+  const idOf = (parts, name) => (hierarchical ? entityKey(dimKey, parts) : normKey(name));
+  const parentOf = (parts) => {
+    if (dimKey === 'adset') return parts.campaign || '';
+    if (dimKey === 'creative') return [parts.campaign, parts.adset].filter(Boolean).join(' ▸ ');
+    return '';
+  };
+
   const groups = new Map();
-  const ensure = (k) => {
-    if (!groups.has(k)) groups.set(k, { key: k, leads: [], tickets: [], adsets: new Set() });
-    return groups.get(k);
+  const ensure = (id, name, parent) => {
+    if (!groups.has(id)) groups.set(id, { id, key: name, parent, leads: [], tickets: [], adsets: new Set() });
+    return groups.get(id);
   };
   for (const l of leads) {
     // Nur Zeilen aus dem Lead-Tab zählen als Leads; Fragebogen-Zeilen sind
     // eigene Datensätze und werden unten als Tickets gezählt.
     if (l.isLead === false) continue;
-    const g = ensure(l[dimKey] || '(unbekannt)');
+    const name = l[dimKey] || '(unbekannt)';
+    const g = ensure(idOf(l, name), name, parentOf(l));
     g.leads.push(l);
     if (l.adset) g.adsets.add(l.adset);
   }
   for (const l of leads) {
     if (!l.hasTicket) continue;
-    const tk = (tDimKey && l[tDimKey]) ? l[tDimKey] : (l[dimKey] || '(unbekannt)');
-    ensure(tk).tickets.push(l);
+    const tv = tView(l);
+    const name = (tDimKey && l[tDimKey]) ? l[tDimKey] : (l[dimKey] || '(unbekannt)');
+    ensure(idOf(hierarchical ? tv : l, name), name, parentOf(hierarchical ? tv : l)).tickets.push(l);
   }
 
   const rows = [];
@@ -169,7 +192,7 @@ export function aggregate(leads, dimKey, overviewByAdset, fb, filters = {}, opts
       : null;
     const qualified = ticketLeads.filter((l) => qualifiedTiers.includes(l.quality?.tier)).length;
 
-    const dm = addFbRows ? (fb?.dimMeta?.[dimKey]?.[normKey(g.key)] || null) : null;
+    const dm = addFbRows ? (fb?.dimMeta?.[dimKey]?.[g.id] || null) : null;
     const m = fbDim ? fbDim[normKey(g.key)] : null;
     let spend = m ? m.spend : (dm ? dm.spend : null);
     if (addFbRows && spend == null && (dimKey === 'adset' || dimKey === 'campaign')) {
@@ -177,9 +200,9 @@ export function aggregate(leads, dimKey, overviewByAdset, fb, filters = {}, opts
     }
     const impressions = (m ? m.impressions : null) ?? (dm ? dm.impressions : null);
     const clicks = (m ? m.clicks : null) ?? (dm ? dm.clicks : null);
-    const uoc = addFbRows ? (fb?.uocByDim?.[dimKey]?.[normKey(g.key)] ?? (dm ? dm.uoc : null)) : null;
+    const uoc = addFbRows ? (fb?.uocByDim?.[dimKey]?.[g.id] ?? (dm ? dm.uoc : null)) : null;
 
-    rows.push(makeRow({ key: g.key, total, tickets, avgQuality, qualified, spend, impressions, clicks, uoc, active: dm ? dm.active : null }, features));
+    rows.push(makeRow({ id: g.id, key: g.key, parent: g.parent, total, tickets, avgQuality, qualified, spend, impressions, clicks, uoc, active: dm ? dm.active : null }, features));
   }
 
   // Pausierte/aktive FB-Einträge OHNE Leads im Zeitraum ergänzen, damit auch
@@ -187,14 +210,19 @@ export function aggregate(leads, dimKey, overviewByAdset, fb, filters = {}, opts
   // Nur im Paid-Container (addFbRows). Respektiert die Drill-Down-Filterung.
   const dm = addFbRows ? (fb?.dimMeta?.[dimKey] || null) : null;
   if (dm) {
-    const existing = new Set([...groups.keys()].map((g) => normKey(g)));
+    const existing = new Set(groups.keys());
     for (const [k, meta] of Object.entries(dm)) {
       if (existing.has(k)) continue;
       // Parent-Filter prüfen (Kampagne/Anzeigengruppe), wenn gesetzt
       if (filters.campaign && meta.parents?.campaign && normKey(meta.parents.campaign) !== normKey(filters.campaign)) continue;
       if (filters.adset && meta.parents?.adset && normKey(meta.parents.adset) !== normKey(filters.adset)) continue;
       const uoc = fb?.uocByDim?.[dimKey]?.[k] ?? meta.uoc ?? null;
-      rows.push(makeRow({ key: meta.name, total: 0, tickets: 0, avgQuality: null, qualified: 0, spend: meta.spend, impressions: meta.impressions, clicks: meta.clicks, uoc, active: meta.active }, features));
+      const parent = dimKey === 'adset'
+        ? (meta.parents?.campaign || '')
+        : dimKey === 'creative'
+          ? [meta.parents?.campaign, meta.parents?.adset].filter(Boolean).join(' ▸ ')
+          : '';
+      rows.push(makeRow({ id: k, key: meta.name, parent, total: 0, tickets: 0, avgQuality: null, qualified: 0, spend: meta.spend, impressions: meta.impressions, clicks: meta.clicks, uoc, active: meta.active }, features));
     }
   }
   return rows;
@@ -205,10 +233,13 @@ export function aggregate(leads, dimKey, overviewByAdset, fb, filters = {}, opts
  * features: { hasTickets, hasQuality } – abgeschaltete Kennzahlen werden null,
  * wodurch die Tabellen die Spalten automatisch weglassen.
  */
-function makeRow({ key, total, tickets, avgQuality, qualified, spend, impressions, clicks, uoc, active }, features = {}) {
+function makeRow({ id, key, parent, total, tickets, avgQuality, qualified, spend, impressions, clicks, uoc, active }, features = {}) {
   const { hasTickets = true, hasQuality = true } = features;
   return {
+    // id = voller Pfad (eindeutig), key = Anzeigename, parent = Elternpfad
+    id: id ?? key,
     key,
+    parent: parent || '',
     active,
     leads: total,
     tickets: hasTickets ? tickets : null,

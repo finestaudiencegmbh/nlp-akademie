@@ -344,24 +344,26 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
 
   // Individuell ausgehende Klicks je Dimension (für CTR/CPC/CVR-Start in der
   // "Performance nach Ebene"-Tabelle), Schlüssel normalisiert.
+  // WICHTIG: hierarchisch geschlüsselt (wie leadBy/ticketBy). Ein Creative-Name,
+  // der in mehreren Anzeigengruppen vorkommt, darf seine Klicks nicht teilen.
   const uocByDim = { campaign: {}, adset: {}, creative: {} };
   for (const e of entities) {
-    const add = (bucket, name) => {
-      const k = normKey(name);
-      if (!k) return;
-      bucket[k] = (bucket[k] || 0) + (e.uniqueOutboundClicks || 0);
-    };
-    add(uocByDim.campaign, e.campaign);
-    add(uocByDim.adset, e.adset);
-    add(uocByDim.creative, e.creative);
+    for (const dim of ['campaign', 'adset', 'creative']) {
+      if (!normKey(leafName(dim, e))) continue;
+      const k = pathKey(dim, e);
+      uocByDim[dim][k] = (uocByDim[dim][k] || 0) + (e.uniqueOutboundClicks || 0);
+    }
   }
 
   // Pro Dimension (campaign/adset/creative): FB-Kennzahlen + Status + Lead-Stats,
   // damit das Frontend AUCH pausierte Einträge ohne Leads anzeigen kann (grau).
+  // Ebenfalls HIERARCHISCH geschlüsselt: derselbe Anzeigengruppen- oder
+  // Creative-Name in zwei Eltern bleibt dadurch getrennt (Duplikate in Meta).
   const dimMeta = { campaign: {}, adset: {}, creative: {} };
-  const ensure = (dim, name, { active = null, parents = {} } = {}) => {
-    const k = normKey(name);
-    if (!k) return null;
+  const ensure = (dim, parts, { active = null, parents = {} } = {}) => {
+    const name = leafName(dim, parts);
+    if (!normKey(name)) return null;
+    const k = pathKey(dim, parts);
     if (!dimMeta[dim][k]) {
       dimMeta[dim][k] = { name, spend: 0, impressions: 0, clicks: 0, uoc: 0, active, parents };
     }
@@ -374,9 +376,9 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
     const adRaw = resolveAdActive(e.campaign, e.adset, e.creative);
     const adActive = adRaw == null ? aActive : adRaw; // echter Ad-Status, sonst von Anzeigengruppe
     const buckets = [
-      ensure('campaign', e.campaign, { active: cActive }),
-      ensure('adset', e.adset, { active: aActive, parents: { campaign: e.campaign } }),
-      ensure('creative', e.creative, { active: adActive, parents: { campaign: e.campaign, adset: e.adset } }),
+      ensure('campaign', e, { active: cActive }),
+      ensure('adset', e, { active: aActive, parents: { campaign: e.campaign } }),
+      ensure('creative', e, { active: adActive, parents: { campaign: e.campaign, adset: e.adset } }),
     ];
     for (const b of buckets) {
       if (!b) continue;

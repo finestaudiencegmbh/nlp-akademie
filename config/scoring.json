@@ -1,7 +1,7 @@
 {
   "_comment": "Bewertungsmodell für die Lead-Qualität des Result-Maker-Workshops. Bewertet werden die Antworten aus dem Tab 'Online-Workshop … Umfrage'. Geändert wird hier – nicht im Code. Nach dem Speichern im Dashboard auf 'Aktualisieren' klicken.",
 
-  "_comment_logik": "Die Einstufung folgt festen Geschäftsregeln, nicht einer Punkte-Mischung. Reihenfolge der Prüfung: (1) Disqualifikation (Rentner/Schüler/Arbeitssuchend/über 60) -> D. (2) Mittelfeld 2.000–2.999 € MIT Kaufsignal (hohe Dringlichkeit ODER selbstständig) -> B. (3) sonst entscheidet das Einkommen: über 3.000 € -> A, 2.000–2.999 € -> C, darunter -> D. Umgesetzt über die Einkommensstufen (income = einziges Gewicht) plus die harten Regeln unter 'rules'. Dringlichkeit und Berufsbezeichnung fließen mit Gewicht 0 nicht in den gerechneten Score ein, wirken aber über die Regeln – so bleibt die Einstufung nachvollziehbar statt vermischt.",
+  "_comment_logik": "Die Einstufung folgt festen Geschäftsregeln, nicht einer Punkte-Mischung. Reihenfolge der Prüfung: (1) Disqualifikation über die Berufsbezeichnung (Rentner/Schüler/Arbeitssuchend) -> D. Das Alter disqualifiziert NICHT. (2) Mittelfeld 2.000–2.999 € MIT Kaufsignal (hohe Dringlichkeit ODER selbstständig) -> B. (3) sonst entscheidet das Einkommen: über 3.000 € -> A, 2.000–2.999 € -> C, darunter -> D. Umgesetzt über die Einkommensstufen (income = einziges Gewicht) plus die harten Regeln unter 'rules'. Dringlichkeit und Berufsbezeichnung fließen mit Gewicht 0 nicht in den gerechneten Score ein, wirken aber über die Regeln – so bleibt die Einstufung nachvollziehbar statt vermischt.",
 
   "_comment_skala": "Die Punktwerte sind eine SCHULNOTEN-SKALA: D = 0, C = 40, B = 70, A = 100. Das Dashboard zeigt als Lead-Qualität den Durchschnitt dieser Punkte in Prozent. Ein A und ein B ergeben also 85 %, nicht 50 %. Wer die Stufen verschiebt, verschiebt damit auch die angezeigte Qualität – die Werte müssen zu den 'tiers' unten passen (A ab 75, B ab 55, C ab 35).",
 
@@ -14,10 +14,10 @@
   "_comment_rules": "Harte Geschäftsregeln, der Reihe nach geprüft; die erste passende gewinnt und schlägt den gerechneten Score. 'any' = eine Bedingung reicht, 'all' = alle müssen passen. match/matchAny wird case-insensitiv als Teilstring gegen die Antwort geprüft. setScore erzwingt, minScore/maxScore heben bzw. deckeln.",
   "rules": [
     {
-      "label": "Disqualifiziert: kein planbares Einkommen oder über 60",
+      "_comment": "Disqualifikation über die Berufsbezeichnung, NICHT über das Alter. Wer mit 62 angestellt ist und über 5.000 € verdient, ist ein guter Lead. Wer nicht mehr arbeitet, steckt ohnehin in 'Rentner'.",
+      "label": "Disqualifiziert: kein planbares Einkommen",
       "any": [
-        { "dim": "employment", "matchAny": ["rentner", "schüler", "student", "arbeitssuchend", "arbeitslos"] },
-        { "dim": "age", "matchAny": ["über 60", "ueber 60", "60+"] }
+        { "dim": "employment", "matchAny": ["rentner", "schüler", "student", "arbeitssuchend", "arbeitslos"] }
       ],
       "setScore": 0
     },
@@ -66,7 +66,7 @@
   },
 
   "employment": {
-    "_comment": "Berufsbezeichnung. Antwortoptionen: 'Angestellt', 'Selbstständig / Unternehmer', 'Rentner', 'Schüler/Student', 'Arbeitssuchend'. Aktuell Gewicht 0 – die drei letzten Optionen wirken stattdessen als Disqualifikation über 'rules'. Schlüssel werden case-insensitiv als Teilstring geprüft, der erste Treffer gewinnt.",
+    "_comment": "Berufsbezeichnung. Antwortoptionen: 'Angestellt', 'Selbstständig / Unternehmer', 'Rentner', 'Schüler/Student', 'Arbeitssuchend'. Aktuell Gewicht 0 – die drei letzten Optionen wirken stattdessen als Disqualifikation über 'rules'. Das Alter fließt bewusst NICHT in die Bewertung ein, es wird nur angezeigt und ist filterbar. Schlüssel werden case-insensitiv als Teilstring geprüft, der erste Treffer gewinnt.",
     "scores": {
       "unternehmer": 1.0,
       "selbstständig": 0.9,

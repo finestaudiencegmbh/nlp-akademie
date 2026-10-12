@@ -138,7 +138,7 @@ const expectedTier = (income, employment, urgency) => {
 for (const income of INCOMES) {
   for (const employment of ['Angestellt', 'Selbstständig / Unternehmer']) {
     for (const urgency of URGENCIES) {
-      for (const age of ['18-29 Jahre', '30-39 Jahre', '40-49 Jahre', '50-59 Jahre']) {
+      for (const age of ['18-29 Jahre', '30-39 Jahre', '40-49 Jahre', '50-59 Jahre', 'Über 60 Jahre']) {
         const want = expectedTier(income, employment, urgency);
         assert.equal(
           tierOf({ income, employment, age, urgency }),
@@ -155,7 +155,6 @@ for (const income of INCOMES) {
   for (const employment of ['Rentner', 'Schüler/Student', 'Arbeitssuchend']) {
     assert.equal(tierOf({ income, employment, age: '40-49 Jahre', urgency: 'Sofort' }), 'D', `${employment} -> immer D`);
   }
-  assert.equal(tierOf({ income, employment: 'Selbstständig / Unternehmer', age: 'Über 60 Jahre', urgency: 'Sofort' }), 'D', 'über 60 -> immer D');
 }
 
 // --- Noten-Skala: D = 0, C = 40, B = 70, A = 100 --------------------------
@@ -185,6 +184,6 @@ assert.equal(computeQuality({ challenge: 'Keine Struktur' }, scoring), null, 'oh
 console.log('✓ Projekt-Konfiguration passt zum Sheet');
 console.log(`  ${PROJECT.name} | Ticket-Begriff: ${PROJECT.labels.ticket.many} | Leads: ${ds.counts.leads}, Tickets: ${ds.counts.tickets}`);
 console.log('  Einstufung: über 3.000 € -> A · Mittelfeld mit Kaufsignal -> B · Mittelfeld ohne -> C · unter 2.000 €/Rentner/Ü60 -> D');
-console.log('  (alle Kombinationen aus Einkommen x Beruf x Dringlichkeit x Alter geprüft)');
+console.log('  (alle Kombinationen aus Einkommen x Beruf x Dringlichkeit x Alter geprüft, Alter disqualifiziert nicht)');
 console.log(`  Noten-Skala: D = 0 % · C = 40 % · B = 70 % · A = 100 % · Schnitt: ${schnitt} %`);
 console.log('  Lead-Tab und Umfrage-Tab werden getrennt gezählt, kein Abgleich zwischen den Reitern');
